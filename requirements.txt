@@ -2,3 +2,4 @@ python-dotenv==1.0.1
 pandas==2.2.3
 yfinance==0.2.52
 alpaca-py==0.38
+apscheduler==3.11.0
