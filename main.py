@@ -201,6 +201,13 @@ def scheduled_rebalance():
     rebalance_with_retries()
 
 if __name__ == '__main__':
+    # Выполняем немедленную ребалансировку, если сегодня ещё не проводилась
+    if not is_rebalance_done():
+        logging.info("Сегодня ребалансировка ещё не проводилась. Выполняем немедленную ребалансировку.")
+        rebalance_with_retries()
+    else:
+        logging.info("Ребалансировка уже проводилась сегодня.")
+
     try:
         logging.info("Старт планировщика задач.")
         scheduler.start()
