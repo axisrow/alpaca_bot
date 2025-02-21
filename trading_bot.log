@@ -1,0 +1,90 @@
+2025-02-21 10:42:27,019 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 10:42:27,019 [INFO] Бот запущен
+2025-02-21 10:42:27,021 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 10:42:27,021 [INFO] Scheduler started
+2025-02-21 10:44:37,979 [INFO] Бот остановлен
+2025-02-21 10:45:59,584 [INFO] === Запуск торгового бота ===
+2025-02-21 10:45:59,585 [ERROR] Ошибка при проверке календаря рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 10:45:59,585 [INFO] Текущее время (NY): 2025-02-20 22:45:59 EST
+2025-02-21 10:45:59,585 [INFO] Статус рынка: закрыт
+2025-02-21 10:45:59,585 [INFO] Причина: ошибка проверки статуса рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 10:45:59,585 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 10:45:59,588 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 10:45:59,588 [INFO] Планировщик запущен
+2025-02-21 10:45:59,589 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 10:45:59,589 [INFO] Scheduler started
+2025-02-21 10:48:05,683 [INFO] Бот остановлен
+2025-02-21 10:48:06,891 [INFO] === Запуск торгового бота ===
+2025-02-21 10:48:06,891 [ERROR] Ошибка при проверке календаря рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 10:48:06,891 [INFO] Текущее время (NY): 2025-02-20 22:48:06 EST
+2025-02-21 10:48:06,891 [INFO] Статус рынка: закрыт
+2025-02-21 10:48:06,891 [INFO] Причина: ошибка проверки статуса рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 10:48:06,891 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 10:48:06,894 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 10:48:06,894 [INFO] Планировщик запущен
+2025-02-21 10:48:06,895 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 10:48:06,895 [INFO] Scheduler started
+2025-02-21 10:54:32,210 [INFO] Бот остановлен
+2025-02-21 10:54:42,202 [INFO] === Запуск торгового бота ===
+2025-02-21 10:54:44,185 [INFO] Текущее время (NY): 2025-02-20 22:54:44 EST
+2025-02-21 10:54:44,185 [INFO] Статус рынка: закрыт
+2025-02-21 10:54:44,185 [INFO] Причина: праздничный день
+2025-02-21 10:54:44,185 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 10:54:44,188 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 10:54:44,188 [INFO] Планировщик запущен
+2025-02-21 10:54:44,189 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 10:54:44,189 [INFO] Scheduler started
+2025-02-21 11:01:57,563 [INFO] Бот остановлен
+2025-02-21 11:02:03,093 [INFO] === Запуск торгового бота ===
+2025-02-21 11:02:03,093 [ERROR] Ошибка при проверке календаря рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:02:03,093 [INFO] Текущее время (NY): 2025-02-20 23:02:03 EST
+2025-02-21 11:02:03,093 [INFO] Статус рынка: закрыт
+2025-02-21 11:02:03,093 [INFO] Причина: ошибка проверки статуса рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:02:03,093 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 11:02:03,097 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 11:02:03,097 [INFO] Планировщик запущен
+2025-02-21 11:02:03,097 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 11:02:03,097 [INFO] Scheduler started
+2025-02-21 11:03:56,971 [INFO] Бот остановлен
+2025-02-21 11:04:01,070 [INFO] === Запуск торгового бота ===
+2025-02-21 11:04:01,070 [ERROR] Ошибка при проверке календаря рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:04:01,070 [INFO] Текущее время (NY): 2025-02-20 23:04:01 EST
+2025-02-21 11:04:01,070 [INFO] Статус рынка: закрыт
+2025-02-21 11:04:01,070 [INFO] Причина: ошибка проверки статуса рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:04:01,070 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 11:04:01,074 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 11:04:01,074 [INFO] Планировщик запущен
+2025-02-21 11:04:01,074 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 11:04:01,075 [INFO] Scheduler started
+2025-02-21 11:04:07,841 [INFO] Бот остановлен
+2025-02-21 11:04:17,294 [INFO] === Запуск торгового бота ===
+2025-02-21 11:04:17,294 [ERROR] Ошибка при проверке календаря рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:04:17,294 [INFO] Текущее время (NY): 2025-02-20 23:04:17 EST
+2025-02-21 11:04:17,294 [INFO] Статус рынка: закрыт
+2025-02-21 11:04:17,294 [INFO] Причина: ошибка проверки статуса рынка: TradingClient.get_calendar() got an unexpected keyword argument 'start'
+2025-02-21 11:04:17,294 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 11:04:17,297 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 11:04:17,297 [INFO] Планировщик запущен
+2025-02-21 11:04:17,297 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 11:04:17,298 [INFO] Scheduler started
+2025-02-21 11:04:21,773 [INFO] Бот остановлен
+2025-02-21 11:15:51,696 [INFO] === Запуск торгового бота ===
+2025-02-21 11:15:55,901 [INFO] Текущее время (NY): 2025-02-20 23:15:55 EST
+2025-02-21 11:15:55,901 [INFO] Статус рынка: закрыт
+2025-02-21 11:15:55,901 [INFO] Причина: время за пределами торговой сессии 09:30:00-16:00:00
+2025-02-21 11:15:55,901 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 11:15:55,908 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 11:15:55,908 [INFO] Планировщик запущен
+2025-02-21 11:15:55,913 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 11:15:55,916 [INFO] Scheduler started
+2025-02-21 11:15:58,452 [INFO] Бот остановлен
+2025-02-21 11:16:14,062 [INFO] === Запуск торгового бота ===
+2025-02-21 11:16:15,259 [INFO] Текущее время (NY): 2025-02-20 23:16:15 EST
+2025-02-21 11:16:15,259 [INFO] Статус рынка: закрыт
+2025-02-21 11:16:15,259 [INFO] Причина: время за пределами торговой сессии 09:30:00-16:00:00
+2025-02-21 11:16:15,259 [INFO] Следующая ребалансировка запланирована на: 2025-02-21 10:00:00 EST
+2025-02-21 11:16:15,262 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-21 11:16:15,262 [INFO] Планировщик запущен
+2025-02-21 11:16:15,263 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-21 11:16:15,263 [INFO] Scheduler started
+2025-02-21 11:16:41,854 [INFO] Бот остановлен
