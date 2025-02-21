@@ -3,7 +3,7 @@ import sys
 import time
 import datetime
 import logging
-import pandas as pd
+# import pandas as pd
 import requests
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
@@ -11,6 +11,8 @@ from alpaca.trading.requests import MarketOrderRequest
 import yfinance as yf
 from dotenv import load_dotenv
 from apscheduler.schedulers.blocking import BlockingScheduler
+
+from config import sp500_tickers
 
 # Настройка логирования
 logging.basicConfig(
@@ -45,27 +47,6 @@ def perform_rebalance():
             )
         except Exception as e:
             logging.error(f"Ошибка при подключении к Alpaca: {e}")
-            return
-
-        # Получение списка S&P 500
-        pkl_path = "sp500_tickers.pkl"
-        try:
-            if os.path.exists(pkl_path):
-                sp500_tickers = pd.read_pickle(pkl_path)
-            else:
-                url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-                tables = pd.read_html(url)
-                sp500_df = tables[0]
-                sp500_tickers = sp500_df['Symbol'].tolist()
-                pd.to_pickle(sp500_tickers, pkl_path)
-        except (FileNotFoundError, pd.errors.UnpicklingError) as e:
-            logging.error(f"Ошибка при чтении файла с тикерами: {e}")
-            return
-        except ValueError as e:
-            logging.error(f"Ошибка парсинга HTML страницы с тикерами: {e}")
-            return
-        except Exception as e:
-            logging.error(f"Неизвестная ошибка при получении списка S&P 500: {e}")
             return
 
         # Загрузка данных из yfinance
