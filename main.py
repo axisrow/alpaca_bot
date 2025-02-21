@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import signal
 from datetime import datetime, time as dt_time, timedelta
 import logging
 import pytz
@@ -12,6 +14,18 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from typing import List, Dict, Tuple
 
 from config import sp500_tickers
+
+def has_rebalanced_today(flag_path="data/last_rebalance.txt"):
+    if os.path.exists(flag_path):
+        with open(flag_path, "r") as f:
+            last_date = f.read().strip()
+        if last_date == datetime.now().strftime("%Y-%m-%d"):
+            return True
+    return False
+
+def write_rebalance_flag(flag_path="data/last_rebalance.txt"):
+    with open(flag_path, "w") as f:
+        f.write(datetime.now().strftime("%Y-%m-%d"))
 
 class MarketSchedule:
     """Класс для работы с расписанием рынка"""
@@ -66,6 +80,17 @@ class TradingBot:
         self.trading_client = self.setup_trading_client()
         self.market_schedule = MarketSchedule(self.trading_client)
         self.scheduler = BlockingScheduler()
+        self.should_run = True
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+
+    def signal_handler(self, signum, frame):
+        """Обработчик сигналов для корректного завершения"""
+        logging.info("Получен сигнал завершения. Останавливаем бота...")
+        self.should_run = False
+        if self.scheduler.running:
+            self.scheduler.shutdown()
+        sys.exit(0)
 
     @staticmethod
     def setup_logging():
@@ -141,6 +166,10 @@ class TradingBot:
 
     def perform_rebalance(self):
         """Выполнение ребалансировки портфеля"""
+        if has_rebalanced_today():
+            logging.info("Ребалансировка уже произведена сегодня.")
+            return
+
         is_open, reason = self.market_schedule.check_market_status()
         if not is_open:
             logging.info(f"Ребалансировка отложена: {reason}")
@@ -149,64 +178,62 @@ class TradingBot:
         try:
             logging.info("Начало ребалансировки портфеля")
             
-            # Проверка баланса аккаунта
-            account = self.trading_client.get_account()
-            buying_power = float(account.buying_power)
-            if buying_power <= 0:
-                logging.warning(f"Недостаточно средств для торговли. Доступные средства: ${buying_power}")
-                return
-                
-            # Получение топ-10 акций по моментуму
+            # 1. Получение топ-10 акций по моментуму
             top_tickers = self.get_momentum_tickers()
             logging.info(f"Топ-10 акций по моментуму: {', '.join(top_tickers)}")
             
-            # Получение текущих позиций с проверкой
+            # 2. Получение текущих позиций
             try:
                 current_positions = self.get_current_positions()
                 logging.info(f"Текущие позиции: {current_positions}")
             except Exception as e:
                 logging.error(f"Ошибка при получении текущих позиций: {e}")
                 return
-            
-            # Закрытие позиций только если они существуют
-            positions_to_close = [ticker for ticker in current_positions 
-                               if ticker not in top_tickers]
+
+            # 3. Определяем позиции для закрытия (те, которых нет в топ-10)
+            positions_to_close = [ticker for ticker in current_positions if ticker not in top_tickers]
+            positions_to_open = [ticker for ticker in top_tickers if ticker not in current_positions]
+
+            logging.info(f"Позиции для закрытия: {', '.join(positions_to_close) if positions_to_close else 'нет'}")
+            logging.info(f"Позиции для открытия: {', '.join(positions_to_open) if positions_to_open else 'нет'}")
+
+            # Если изменений нет, выходим
+            if not positions_to_close and not positions_to_open:
+                logging.info("Изменений в позициях нет. Ребалансировка не требуется.")
+                write_rebalance_flag()
+                return
+
+            # 4. Закрываем ненужные позиции
             if positions_to_close:
-                logging.info(f"Закрытие позиций: {', '.join(positions_to_close)}")
                 for ticker in positions_to_close:
                     try:
-                        if float(current_positions[ticker]) > 0:
-                            self.trading_client.close_position(ticker)
-                            logging.info(f"Позиция {ticker} закрыта")
+                        self.trading_client.close_position(ticker)
+                        logging.info(f"Позиция {ticker} закрыта")
                     except Exception as e:
                         logging.error(f"Ошибка при закрытии позиции {ticker}: {e}")
-            
-            # Пересчитываем доступные средства после закрытия позиций
-            account = self.trading_client.get_account()
-            available_cash = float(account.cash)
-            
-            if available_cash <= 0:
-                logging.warning(f"Недостаточно средств для открытия новых позиций. Доступные средства: ${available_cash}")
-                return
+
+                # Ждем обновления баланса
+                time.sleep(5)
+
+            # 5. Открываем новые позиции
+            if positions_to_open:
+                # Проверяем доступные средства
+                account = self.trading_client.get_account()
+                available_cash = float(account.cash)
                 
-            # Расчет размера новых позиций
-            num_new_positions = len([ticker for ticker in top_tickers if ticker not in current_positions])
-            if num_new_positions == 0:
-                logging.info("Нет новых позиций для открытия")
-                return
+                if available_cash <= 0:
+                    logging.warning(f"Недостаточно средств для открытия новых позиций. Доступные средства: ${available_cash}")
+                    return
+
+                position_size = available_cash / len(positions_to_open)
                 
-            position_size = available_cash / num_new_positions
-            
-            if position_size < 1:
-                logging.warning(f"Размер позиции слишком мал: ${position_size}")
-                return
-            
-            # Открытие новых позиций
-            new_positions = [ticker for ticker in top_tickers 
-                           if ticker not in current_positions]
-            if new_positions:
-                logging.info(f"Открытие новых позиций: {', '.join(new_positions)}")
-                for ticker in new_positions:
+                if position_size < 1:
+                    logging.warning(f"Размер позиции слишком мал: ${position_size}")
+                    return
+
+                logging.info(f"Открытие {len(positions_to_open)} новых позиций, размер каждой: ${position_size:.2f}")
+                
+                for ticker in positions_to_open:
                     try:
                         order = MarketOrderRequest(
                             symbol=ticker,
@@ -216,11 +243,12 @@ class TradingBot:
                             time_in_force=TimeInForce.DAY
                         )
                         self.trading_client.submit_order(order)
-                        logging.info(f"Позиция {ticker} открыта на сумму ${position_size}")
+                        logging.info(f"Позиция {ticker} открыта на сумму ${position_size:.2f}")
                     except Exception as e:
                         logging.error(f"Ошибка при открытии позиции {ticker}: {e}")
-            
+
             logging.info("Ребалансировка выполнена успешно")
+            write_rebalance_flag()
             
         except Exception as e:
             logging.error(f"Ошибка при ребалансировке: {e}")
@@ -237,18 +265,7 @@ class TradingBot:
         logging.info(f"Статус рынка: {'открыт' if is_open else 'закрыт'}")
         if not is_open:
             logging.info(f"Причина: {reason}")
-        
-        next_run = now_ny.replace(
-            hour=10, 
-            minute=0, 
-            second=0, 
-            microsecond=0
-        )
-        if now_ny.hour >= 10:
-            next_run = next_run + timedelta(days=1)
-        
-        logging.info(f"Следующая ребалансировка запланирована на: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        
+
         # Планирование ребалансировки на 10:00 (NY) в будние дни
         self.scheduler.add_job(
             self.perform_rebalance,
@@ -266,11 +283,20 @@ class TradingBot:
         
         try:
             logging.info("Планировщик запущен")
-            self.scheduler.start()
-        except (KeyboardInterrupt, SystemExit):
-            logging.info("Бот остановлен")
+            while self.should_run:
+                try:
+                    self.scheduler.start()
+                except KeyboardInterrupt:
+                    break
+                except Exception as e:
+                    logging.error(f"Ошибка в планировщике: {e}")
+                    time.sleep(60)  # Подождем минуту перед повторной попыткой
         except Exception as e:
-            logging.error(f"Неожиданная ошибка: {e}")
+            logging.error(f"Критическая ошибка: {e}")
+        finally:
+            logging.info("Бот остановлен")
+            if self.scheduler.running:
+                self.scheduler.shutdown()
 
 if __name__ == '__main__':
     bot = TradingBot()
