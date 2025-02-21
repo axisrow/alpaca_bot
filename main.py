@@ -75,7 +75,7 @@ class TradingBot:
             format='%(asctime)s [%(levelname)s] %(message)s',
             handlers=[
                 logging.StreamHandler(),
-                logging.FileHandler('trading_bot.log')
+                logging.FileHandler('data/trading_bot.log')
             ]
         )
 
