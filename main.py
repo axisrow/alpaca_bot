@@ -148,31 +148,77 @@ class TradingBot:
 
         try:
             logging.info("Начало ребалансировки портфеля")
+            
+            # Проверка баланса аккаунта
+            account = self.trading_client.get_account()
+            buying_power = float(account.buying_power)
+            if buying_power <= 0:
+                logging.warning(f"Недостаточно средств для торговли. Доступные средства: ${buying_power}")
+                return
+                
             # Получение топ-10 акций по моментуму
             top_tickers = self.get_momentum_tickers()
             logging.info(f"Топ-10 акций по моментуму: {', '.join(top_tickers)}")
             
-            # Получение текущих позиций
-            current_positions = self.get_current_positions()
-            logging.info(f"Текущие позиции: {current_positions}")
+            # Получение текущих позиций с проверкой
+            try:
+                current_positions = self.get_current_positions()
+                logging.info(f"Текущие позиции: {current_positions}")
+            except Exception as e:
+                logging.error(f"Ошибка при получении текущих позиций: {e}")
+                return
             
-            # Закрытие ненужных позиций
+            # Закрытие позиций только если они существуют
             positions_to_close = [ticker for ticker in current_positions 
                                if ticker not in top_tickers]
             if positions_to_close:
                 logging.info(f"Закрытие позиций: {', '.join(positions_to_close)}")
-                self.close_positions(positions_to_close)
+                for ticker in positions_to_close:
+                    try:
+                        if float(current_positions[ticker]) > 0:
+                            self.trading_client.close_position(ticker)
+                            logging.info(f"Позиция {ticker} закрыта")
+                    except Exception as e:
+                        logging.error(f"Ошибка при закрытии позиции {ticker}: {e}")
             
-            # Расчет размера новых позиций
+            # Пересчитываем доступные средства после закрытия позиций
             account = self.trading_client.get_account()
-            position_size = float(account.cash) / len(top_tickers)
+            available_cash = float(account.cash)
+            
+            if available_cash <= 0:
+                logging.warning(f"Недостаточно средств для открытия новых позиций. Доступные средства: ${available_cash}")
+                return
+                
+            # Расчет размера новых позиций
+            num_new_positions = len([ticker for ticker in top_tickers if ticker not in current_positions])
+            if num_new_positions == 0:
+                logging.info("Нет новых позиций для открытия")
+                return
+                
+            position_size = available_cash / num_new_positions
+            
+            if position_size < 1:
+                logging.warning(f"Размер позиции слишком мал: ${position_size}")
+                return
             
             # Открытие новых позиций
             new_positions = [ticker for ticker in top_tickers 
                            if ticker not in current_positions]
             if new_positions:
                 logging.info(f"Открытие новых позиций: {', '.join(new_positions)}")
-                self.open_positions(new_positions, position_size)
+                for ticker in new_positions:
+                    try:
+                        order = MarketOrderRequest(
+                            symbol=ticker,
+                            notional=position_size,
+                            side=OrderSide.BUY,
+                            type=OrderType.MARKET,
+                            time_in_force=TimeInForce.DAY
+                        )
+                        self.trading_client.submit_order(order)
+                        logging.info(f"Позиция {ticker} открыта на сумму ${position_size}")
+                    except Exception as e:
+                        logging.error(f"Ошибка при открытии позиции {ticker}: {e}")
             
             logging.info("Ребалансировка выполнена успешно")
             
