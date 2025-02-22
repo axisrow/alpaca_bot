@@ -1,0 +1,153 @@
+2025-02-22 09:26:11,171 [INFO] === Запуск торгового бота ===
+2025-02-22 09:26:11,171 [INFO] === Запуск Telegram бота ===
+2025-02-22 09:26:12,158 [INFO] Start polling
+2025-02-22 09:26:12,259 [INFO] Текущее время (NY): 2025-02-21 21:26:12 EST
+2025-02-22 09:26:12,260 [INFO] Статус рынка: закрыт
+2025-02-22 09:26:12,260 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 09:26:12,263 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 09:26:12,263 [INFO] Планировщик запущен
+2025-02-22 09:26:12,264 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 09:26:12,264 [INFO] Scheduler started
+2025-02-22 09:26:12,426 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 09:29:48,669 [INFO] Update id=581785570 is handled. Duration 1887 ms by bot id=8169980837
+2025-02-22 09:29:54,513 [INFO] Update id=581785571 is handled. Duration 279 ms by bot id=8169980837
+2025-02-22 09:29:57,424 [INFO] Update id=581785572 is handled. Duration 251 ms by bot id=8169980837
+2025-02-22 09:30:00,371 [INFO] Update id=581785573 is handled. Duration 310 ms by bot id=8169980837
+2025-02-22 09:30:02,566 [INFO] Update id=581785574 is handled. Duration 310 ms by bot id=8169980837
+2025-02-22 09:30:15,124 [WARNING] Received SIGINT signal
+2025-02-22 09:30:15,130 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 09:30:15,131 [INFO] Polling stopped
+2025-02-22 09:36:22,249 [INFO] === Запуск торгового бота ===
+2025-02-22 09:36:22,250 [INFO] === Запуск Telegram бота ===
+2025-02-22 09:36:26,144 [INFO] Текущее время (NY): 2025-02-21 21:36:26 EST
+2025-02-22 09:36:26,167 [INFO] Статус рынка: закрыт
+2025-02-22 09:36:26,177 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 09:36:26,178 [INFO] Start polling
+2025-02-22 09:36:26,195 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 09:36:26,195 [INFO] Планировщик запущен
+2025-02-22 09:36:26,196 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 09:36:26,196 [INFO] Scheduler started
+2025-02-22 09:36:27,556 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 09:36:54,363 [INFO] Update id=581785575 is handled. Duration 7291 ms by bot id=8169980837
+2025-02-22 09:37:06,012 [INFO] Update id=581785576 is handled. Duration 390 ms by bot id=8169980837
+2025-02-22 09:37:09,424 [INFO] Update id=581785577 is handled. Duration 604 ms by bot id=8169980837
+2025-02-22 10:25:59,437 [WARNING] Received SIGINT signal
+2025-02-22 10:25:59,464 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:25:59,465 [INFO] Polling stopped
+2025-02-22 10:28:02,055 [INFO] === Запуск торгового бота ===
+2025-02-22 10:28:02,055 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:28:03,199 [INFO] Start polling
+2025-02-22 10:28:03,303 [INFO] Текущее время (NY): 2025-02-21 22:28:03 EST
+2025-02-22 10:28:03,303 [INFO] Статус рынка: закрыт
+2025-02-22 10:28:03,303 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:28:03,311 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:28:03,311 [INFO] Планировщик запущен
+2025-02-22 10:28:03,312 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:28:03,312 [INFO] Scheduler started
+2025-02-22 10:28:03,531 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:28:10,717 [INFO] Update id=581785578 is handled. Duration 762 ms by bot id=8169980837
+2025-02-22 10:28:13,056 [INFO] Update id=581785579 is handled. Duration 316 ms by bot id=8169980837
+2025-02-22 10:28:15,506 [ERROR] Ошибка при получении данных портфеля: 'TelegramBot' object has no attribute 'trading_client'
+2025-02-22 10:28:15,779 [INFO] Update id=581785580 is handled. Duration 852 ms by bot id=8169980837
+2025-02-22 10:28:19,994 [ERROR] Ошибка при получении статистики: Invalid format specifier
+2025-02-22 10:28:20,311 [INFO] Update id=581785581 is handled. Duration 1074 ms by bot id=8169980837
+2025-02-22 10:28:22,664 [INFO] Рынок закрыт: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:28:23,121 [INFO] Update id=581785582 is handled. Duration 1047 ms by bot id=8169980837
+2025-02-22 10:28:34,174 [WARNING] Received SIGINT signal
+2025-02-22 10:28:34,176 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:28:34,176 [INFO] Polling stopped
+2025-02-22 10:30:37,424 [INFO] === Запуск торгового бота ===
+2025-02-22 10:30:37,424 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:30:38,234 [INFO] Start polling
+2025-02-22 10:30:38,372 [INFO] Текущее время (NY): 2025-02-21 22:30:38 EST
+2025-02-22 10:30:38,372 [INFO] Статус рынка: закрыт
+2025-02-22 10:30:38,373 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:30:38,382 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:30:38,382 [INFO] Планировщик запущен
+2025-02-22 10:30:38,382 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:30:38,382 [INFO] Scheduler started
+2025-02-22 10:30:38,443 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:30:45,585 [INFO] Update id=581785583 is handled. Duration 2094 ms by bot id=8169980837
+2025-02-22 10:31:09,520 [INFO] Update id=581785584 is handled. Duration 1220 ms by bot id=8169980837
+2025-02-22 10:33:33,485 [WARNING] Received SIGINT signal
+2025-02-22 10:33:33,487 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:33:33,487 [INFO] Polling stopped
+2025-02-22 10:39:05,420 [INFO] === Запуск торгового бота ===
+2025-02-22 10:39:05,420 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:39:06,572 [INFO] Текущее время (NY): 2025-02-21 22:39:06 EST
+2025-02-22 10:39:06,578 [INFO] Статус рынка: закрыт
+2025-02-22 10:39:06,590 [INFO] Start polling
+2025-02-22 10:39:06,590 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:39:06,597 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:39:06,597 [INFO] Планировщик запущен
+2025-02-22 10:39:06,597 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:39:06,597 [INFO] Scheduler started
+2025-02-22 10:39:06,918 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:39:24,057 [WARNING] Received SIGINT signal
+2025-02-22 10:39:24,059 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:39:24,059 [INFO] Polling stopped
+2025-02-22 10:39:32,446 [INFO] === Запуск торгового бота ===
+2025-02-22 10:39:32,446 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:39:33,354 [INFO] Start polling
+2025-02-22 10:39:33,465 [INFO] Текущее время (NY): 2025-02-21 22:39:33 EST
+2025-02-22 10:39:33,466 [INFO] Статус рынка: закрыт
+2025-02-22 10:39:33,466 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:39:33,470 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:39:33,471 [INFO] Планировщик запущен
+2025-02-22 10:39:33,471 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:39:33,471 [INFO] Scheduler started
+2025-02-22 10:39:33,618 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:40:12,267 [INFO] Update id=581785585 is handled. Duration 878 ms by bot id=8169980837
+2025-02-22 10:40:19,357 [ERROR] Ошибка при получении данных портфеля: 'TradingClient' object has no attribute 'get_position'
+2025-02-22 10:40:19,886 [INFO] Update id=581785586 is handled. Duration 1469 ms by bot id=8169980837
+2025-02-22 10:40:28,665 [WARNING] Received SIGINT signal
+2025-02-22 10:40:28,668 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:40:28,668 [INFO] Polling stopped
+2025-02-22 10:44:16,387 [INFO] === Запуск торгового бота ===
+2025-02-22 10:44:16,387 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:44:17,408 [INFO] Текущее время (NY): 2025-02-21 22:44:17 EST
+2025-02-22 10:44:17,411 [INFO] Start polling
+2025-02-22 10:44:17,411 [INFO] Статус рынка: закрыт
+2025-02-22 10:44:17,411 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:44:17,416 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:44:17,416 [INFO] Планировщик запущен
+2025-02-22 10:44:17,416 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:44:17,416 [INFO] Scheduler started
+2025-02-22 10:44:17,637 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:44:22,354 [ERROR] Ошибка при получении данных портфеля: 'TradingClient' object has no attribute 'get_position'
+2025-02-22 10:44:22,668 [INFO] Update id=581785587 is handled. Duration 1747 ms by bot id=8169980837
+2025-02-22 10:44:28,835 [INFO] Update id=581785588 is handled. Duration 307 ms by bot id=8169980837
+2025-02-22 10:44:31,467 [ERROR] Ошибка при получении данных портфеля: 'TradingClient' object has no attribute 'get_position'
+2025-02-22 10:44:31,885 [INFO] Update id=581785589 is handled. Duration 1470 ms by bot id=8169980837
+2025-02-22 10:46:50,211 [WARNING] Received SIGINT signal
+2025-02-22 10:46:50,226 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:46:50,229 [INFO] Polling stopped
+2025-02-22 10:47:10,798 [INFO] === Запуск торгового бота ===
+2025-02-22 10:47:10,798 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:47:11,762 [INFO] Start polling
+2025-02-22 10:47:12,231 [INFO] Текущее время (NY): 2025-02-21 22:47:12 EST
+2025-02-22 10:47:12,236 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:47:12,236 [INFO] Статус рынка: закрыт
+2025-02-22 10:47:12,237 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:47:12,243 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:47:12,244 [INFO] Планировщик запущен
+2025-02-22 10:47:12,244 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:47:12,244 [INFO] Scheduler started
+2025-02-22 10:47:17,902 [INFO] Update id=581785590 is handled. Duration 742 ms by bot id=8169980837
+2025-02-22 10:47:21,333 [ERROR] Ошибка при получении данных портфеля: 'TradingClient' object has no attribute 'get_position_by_symbol'
+2025-02-22 10:47:21,638 [INFO] Update id=581785591 is handled. Duration 2306 ms by bot id=8169980837
+2025-02-22 10:47:54,157 [WARNING] Received SIGINT signal
+2025-02-22 10:47:54,160 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:47:54,160 [INFO] Polling stopped
+2025-02-22 10:49:17,635 [INFO] === Запуск торгового бота ===
+2025-02-22 10:49:17,635 [INFO] === Запуск Telegram бота ===
+2025-02-22 10:49:18,612 [INFO] Start polling
+2025-02-22 10:49:18,654 [INFO] Текущее время (NY): 2025-02-21 22:49:18 EST
+2025-02-22 10:49:18,654 [INFO] Статус рынка: закрыт
+2025-02-22 10:49:18,654 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-22 10:49:18,659 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-22 10:49:18,659 [INFO] Планировщик запущен
+2025-02-22 10:49:18,659 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-22 10:49:18,659 [INFO] Scheduler started
+2025-02-22 10:49:18,838 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-22 10:49:24,603 [INFO] Update id=581785592 is handled. Duration 2187 ms by bot id=8169980837

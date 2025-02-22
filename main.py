@@ -18,6 +18,13 @@ from typing import List, Dict, Tuple, Optional
 
 from config import sp500_tickers
 
+import asyncio
+from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand, CallbackQuery
+from aiogram import F
+from handlers import router
+from config import TELEGRAM_BOT_TOKEN
+
 def retry_on_exception(retries: int = 3, delay: int = 1):
     """Декоратор для повторных попыток выполнения функции при исключении"""
     def decorator(func):
@@ -336,6 +343,170 @@ class TradingBot:
             if self.scheduler.running:
                 self.scheduler.shutdown()
 
+class TelegramBot:
+    def __init__(self, trading_bot: TradingBot):
+        self.bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        self.dp = Dispatcher()
+        self.trading_bot = trading_bot
+        self.should_run = True
+        self.setup_handlers()
+
+    async def stop(self):
+        """Остановка Telegram бота"""
+        logging.info("Останавливаем Telegram бота...")
+        self.should_run = False
+        await self.bot.session.close()
+
+    def setup_handlers(self):
+        @self.dp.callback_query(F.data == "portfolio_status")
+        async def show_portfolio(callback: CallbackQuery):
+            await callback.answer()
+            try:
+                positions = self.trading_bot.portfolio_manager.get_current_positions()
+                account = self.trading_bot.trading_client.get_account()
+                
+                msg = "📊 Статус портфеля:\n\n"
+                total_positions_value = 0
+                
+                if positions:
+                    # Получаем все позиции одним запросом
+                    all_positions = self.trading_bot.trading_client.get_all_positions()
+                    positions_dict = {p.symbol: p for p in all_positions}
+                    
+                    for symbol, qty in positions.items():
+                        if symbol in positions_dict:
+                            position = positions_dict[symbol]
+                            position_value = float(position.market_value)
+                            total_positions_value += position_value
+                            msg += f"• {symbol}: {qty:.2f} шт. (${position_value:.2f})\n"
+                else:
+                    msg += "Открытых позиций нет\n"
+                
+                equity = float(account.equity)
+                cash = float(account.cash)
+                
+                msg += f"\n💰 Доступные средства: ${cash:.2f}\n"
+                msg += f"📈 Общая стоимость позиций: ${total_positions_value:.2f}\n"
+                msg += f"💵 Эквити: ${equity:.2f}\n"
+                msg += f"📊 P&L за сегодня: ${float(account.equity) - float(account.last_equity):.2f}"
+                
+                await callback.message.answer(msg)
+            except Exception as e:
+                logging.error(f"Ошибка при получении данных портфеля: {e}")
+                await callback.message.answer("❌ Ошибка при получении данных портфеля")
+
+        @self.dp.callback_query(F.data == "trading_stats")
+        async def show_stats(callback: CallbackQuery):
+            await callback.answer()
+            try:
+                account = self.trading_bot.trading_client.get_account()
+                
+                equity = float(account.equity)
+                cash = float(account.cash)
+                pnl = float(account.equity) - float(account.last_equity)
+                pnl_percentage = (pnl / float(account.last_equity)) * 100 if float(account.last_equity) != 0 else 0
+                
+                # Получаем общую стоимость позиций
+                total_positions_value = 0
+                all_positions = self.trading_bot.trading_client.get_all_positions()
+                
+                for position in all_positions:
+                    total_positions_value += float(position.market_value)
+                
+                msg = "📈 Торговая статистика:\n\n"
+                msg += f"💵 Общий баланс (эквити): ${equity:.2f}\n"
+                msg += f"💰 Доступные средства: ${cash:.2f}\n"
+                msg += f"📊 Стоимость позиций: ${total_positions_value:.2f}\n"
+                msg += f"📈 P&L сегодня: ${pnl:.2f} ({pnl_percentage:.2f}%)\n"
+                msg += f"🏁 Начальный баланс дня: ${float(account.last_equity):.2f}"
+                
+                await callback.message.answer(msg)
+            except Exception as e:
+                error_msg = f"Ошибка при получении статистики: {str(e)}"
+                logging.error(error_msg)
+                await callback.message.answer("❌ Ошибка при получении статистики")
+
+        @self.dp.callback_query(F.data == "settings")
+        async def show_settings(callback: CallbackQuery):
+            await callback.answer()
+            msg = "⚙️ Настройки бота:\n\n"
+            msg += f"🕙 Время ребалансировки: 10:00 NY\n"
+            msg += f"📊 Количество позиций: 10\n"
+            msg += f"🏦 Режим: Paper Trading\n"
+            msg += f"🌎 Рынок: {'открыт' if self.trading_bot.market_schedule.is_open else 'закрыт'}"
+            
+            await callback.message.answer(msg)
+
+        # Добавляем роутер с базовыми командами
+        self.dp.include_router(router)
+
+    async def start(self):
+        """Запуск Telegram бота"""
+        logging.info("=== Запуск Telegram бота ===")
+        
+        # Установка команд бота
+        await self.bot.set_my_commands([
+            BotCommand(command="start", description="Начать работу"),
+            BotCommand(command="help", description="Помощь"),
+        ])
+        
+        # Запуск бота
+        await self.dp.start_polling(self.bot)
+
 if __name__ == '__main__':
-    bot = TradingBot()
-    bot.start()
+    # Создаем экземпляры ботов
+    trading_bot = TradingBot()
+    telegram_bot = TelegramBot(trading_bot)
+    
+    async def shutdown(signal, loop):
+        """Корректное завершение работы"""
+        logging.info(f"Получен сигнал завершения: {signal.name}")
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        
+        # Останавливаем торгового бота
+        trading_bot.should_run = False
+        if trading_bot.scheduler.running:
+            trading_bot.scheduler.shutdown()
+        
+        # Останавливаем телеграм бота
+        await telegram_bot.stop()
+        
+        # Отменяем все оставшиеся задачи
+        [task.cancel() for task in tasks]
+        logging.info(f"Отмена {len(tasks)} задач")
+        await asyncio.gather(*tasks, return_exceptions=True)
+        loop.stop()
+
+    async def main():
+        # Установка обработчиков сигналов
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(
+                sig,
+                lambda s=sig: asyncio.create_task(shutdown(s, loop))
+            )
+        
+        # Запуск ботов
+        trading_task = asyncio.create_task(
+            asyncio.to_thread(trading_bot.start)
+        )
+        telegram_task = asyncio.create_task(
+            telegram_bot.start()
+        )
+        
+        try:
+            await asyncio.gather(trading_task, telegram_task)
+        except asyncio.CancelledError:
+            logging.info("Задачи отменены")
+        finally:
+            loop.stop()
+    
+    # Запускаем асинхронное выполнение
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Получен сигнал завершения работы")
+    except Exception as e:
+        logging.error(f"Критическая ошибка: {e}")
+    finally:
+        logging.info("Боты остановлены")
