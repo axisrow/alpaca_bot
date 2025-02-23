@@ -487,3 +487,130 @@
 2025-02-23 10:59:42,212 [INFO] Start polling
 2025-02-23 10:59:42,956 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
 2025-02-23 10:59:58,825 [INFO] Update id=581785614 is handled. Duration 7668 ms by bot id=8169980837
+2025-02-23 11:18:13,874 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2025-02-23 11:18:13,883 [WARNING] Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8169980837)
+2025-02-23 11:18:26,198 [INFO] Connection established (tryings = 1, bot id = 8169980837)
+2025-02-23 12:06:39,068 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2025-02-23 12:06:39,077 [WARNING] Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8169980837)
+2025-02-23 12:07:08,526 [INFO] Connection established (tryings = 1, bot id = 8169980837)
+2025-02-23 12:21:40,081 [WARNING] Received SIGINT signal
+2025-02-23 12:21:40,148 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:21:40,152 [INFO] Polling stopped
+2025-02-23 12:21:40,429 [INFO] Программа завершена
+2025-02-23 12:31:33,405 [INFO] === Запуск торгового бота ===
+2025-02-23 12:31:33,405 [INFO] Текущее время (NY): 2025-02-23 00:31:33 EST
+2025-02-23 12:31:33,405 [INFO] Статус рынка: закрыт
+2025-02-23 12:31:33,405 [INFO] Причина: выходной день (суббота/воскресенье)
+2025-02-23 12:31:33,408 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-23 12:31:33,408 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-23 12:31:33,408 [INFO] Scheduler started
+2025-02-23 12:31:33,409 [INFO] Планировщик запущен
+2025-02-23 12:31:33,409 [INFO] === Запуск Telegram бота ===
+2025-02-23 12:32:00,472 [INFO] Shutting down...
+2025-02-23 12:32:00,476 [INFO] Scheduler has been shut down
+2025-02-23 12:32:00,477 [INFO] Планировщик остановлен
+2025-02-23 12:32:00,477 [INFO] Останавливаем Telegram бот...
+2025-02-23 12:32:00,478 [ERROR] Task exception was never retrieved
+future: <Task finished name='Task-4' coro=<shutdown() done, defined at /Users/axisrow/Projects/alpaca_bot/main.py:380> exception=RuntimeError('Polling is not started')>
+Traceback (most recent call last):
+  File "/Users/axisrow/Projects/alpaca_bot/main.py", line 384, in shutdown
+    await telegram_bot.stop()
+  File "/Users/axisrow/Projects/alpaca_bot/main.py", line 338, in stop
+    await self.dp.stop_polling()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 445, in stop_polling
+    raise RuntimeError("Polling is not started")
+RuntimeError: Polling is not started
+2025-02-23 12:32:04,043 [INFO] Start polling
+2025-02-23 12:32:04,368 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:32:07,154 [WARNING] Received SIGINT signal
+2025-02-23 12:32:07,165 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:32:07,166 [INFO] Polling stopped
+2025-02-23 12:32:07,420 [INFO] Программа завершена
+2025-02-23 12:32:13,108 [INFO] === Запуск торгового бота ===
+2025-02-23 12:32:13,108 [INFO] Текущее время (NY): 2025-02-23 00:32:13 EST
+2025-02-23 12:32:13,108 [INFO] Статус рынка: закрыт
+2025-02-23 12:32:13,108 [INFO] Причина: выходной день (суббота/воскресенье)
+2025-02-23 12:32:13,111 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-23 12:32:13,111 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-23 12:32:13,111 [INFO] Scheduler started
+2025-02-23 12:32:13,111 [INFO] Планировщик запущен
+2025-02-23 12:32:13,111 [INFO] === Запуск Telegram бота ===
+2025-02-23 12:32:14,368 [INFO] Start polling
+2025-02-23 12:32:14,591 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:32:21,231 [WARNING] Received SIGINT signal
+2025-02-23 12:32:21,238 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:32:21,238 [INFO] Polling stopped
+2025-02-23 12:32:21,494 [INFO] Программа завершена
+2025-02-23 12:32:26,329 [INFO] === Запуск торгового бота ===
+2025-02-23 12:32:26,329 [INFO] Текущее время (NY): 2025-02-23 00:32:26 EST
+2025-02-23 12:32:26,329 [INFO] Статус рынка: закрыт
+2025-02-23 12:32:26,329 [INFO] Причина: выходной день (суббота/воскресенье)
+2025-02-23 12:32:26,331 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-23 12:32:26,331 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-23 12:32:26,331 [INFO] Scheduler started
+2025-02-23 12:32:26,332 [INFO] Планировщик запущен
+2025-02-23 12:32:26,332 [INFO] === Запуск Telegram бота ===
+2025-02-23 12:32:31,471 [INFO] Start polling
+2025-02-23 12:32:31,832 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:34:46,198 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2025-02-23 12:34:46,202 [WARNING] Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8169980837)
+2025-02-23 12:35:58,210 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2025-02-23 12:35:58,217 [WARNING] Sleep for 1.510492 seconds and try again... (tryings = 1, bot id = 8169980837)
+2025-02-23 12:36:01,231 [INFO] Connection established (tryings = 2, bot id = 8169980837)
+2025-02-23 12:36:03,107 [INFO] Update id=581785616 is handled. Duration 1853 ms by bot id=8169980837
+2025-02-23 12:36:03,108 [INFO] Update id=581785617 is handled. Duration 1846 ms by bot id=8169980837
+2025-02-23 12:36:03,108 [INFO] Update id=581785618 is handled. Duration 1846 ms by bot id=8169980837
+2025-02-23 12:36:03,114 [INFO] Update id=581785615 is not handled. Duration 1876 ms by bot id=8169980837
+2025-02-23 12:36:03,115 [ERROR] Cause exception while process update id=581785615 by bot id=8169980837
+TelegramBadRequest: Telegram server says - Bad Request: query is too old and response timeout expired or query ID is invalid
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 309, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 158, in feed_update
+    response = await self.update.wrap_outer_middleware(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/error.py", line 25, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/user_context.py", line 56, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/fsm/middleware.py", line 42, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
+    return await wrapped()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 276, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 146, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 141, in _wrapped
+    return await self._propagate_event(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 174, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 146, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 141, in _wrapped
+    return await self._propagate_event(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 166, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
+    return await wrapped()
+  File "/Users/axisrow/Projects/alpaca_bot/handlers.py", line 49, in show_portfolio
+    await callback.answer()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/methods/base.py", line 84, in emit
+    return await bot(self)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/client/bot.py", line 498, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/client/session/base.py", line 254, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/client/session/aiohttp.py", line 185, in make_request
+    response = self.check_response(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/client/session/base.py", line 120, in check_response
+    raise TelegramBadRequest(method=method, message=description)
+aiogram.exceptions.TelegramBadRequest: Telegram server says - Bad Request: query is too old and response timeout expired or query ID is invalid
+2025-02-23 12:36:24,109 [INFO] Update id=581785619 is handled. Duration 6912 ms by bot id=8169980837
+2025-02-23 12:38:33,038 [WARNING] Received SIGINT signal
+2025-02-23 12:38:33,047 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-23 12:38:33,055 [INFO] Polling stopped
+2025-02-23 12:38:33,318 [INFO] Программа завершена

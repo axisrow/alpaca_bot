@@ -72,10 +72,10 @@ def setup_router(trading_bot):
             else:
                 msg += "Позиции: нет открытых позиций\n"
             
-            msg += "\nБаланс:\n"
-            msg += f"Доступные средства – ${float(account.cash):.2f}\n"
-            msg += f"Эквити – ${float(account.equity):.2f}\n"
-            msg += f"\nP&L: ${pnl:.2f}"
+            msg += "\nПротфель:\n"
+            msg += f"Оценка: {float(account.portfolio_value):.2f} euro\n"
+            msg += f"Эквити: {float(account.equity):.2f} euro\n"
+            msg += f"\nP&L: ${pnl:.2f} euro"
             
             await callback.message.answer(msg)
         except Exception as e:
