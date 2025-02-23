@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
-from handlers import router
+from handlers import setup_router
 from config import TELEGRAM_BOT_TOKEN
 
 async def main():
@@ -14,7 +14,7 @@ async def main():
     dp = Dispatcher()
     
     # Регистрируем роутер
-    dp.include_router(router)
+    dp.include_router(setup_router)
     
     # Установка команд бота
     await bot.set_my_commands([
