@@ -269,26 +269,46 @@ class TradingBot:
             logging.info("Планировщик остановлен")
 
     def get_portfolio_status(self):
-        """Получение данных о портфеле"""
+        """Получение детальных данных о портфеле"""
         try:
             positions = self.portfolio_manager.get_current_positions()
             account = self.trading_client.get_account()
-            pnl = float(account.equity) - float(account.last_equity)
-            return positions, account, pnl
+            
+            # Расчет полного P&L
+            realized_pl = float(account.equity) - float(account.last_equity)
+            unrealized_pl = sum(float(pos.unrealized_pl) for pos in self.trading_client.get_all_positions())
+            total_pnl = realized_pl + unrealized_pl
+            
+            return positions, account, total_pnl
         except Exception as e:
             logging.error(f"Ошибка при получении данных портфеля: {e}")
             return {}, None, 0
 
     def get_trading_stats(self):
-        """Получение торговой статистики"""
+        """Получение реальной торговой статистики"""
         try:
-            # Здесь можно добавить реальную логику, например, запрос истории сделок
-            trades_today = 5  # Замените на реальные данные
-            pnl = 150.0       # Замените на реальные данные
-            win_rate = 60.0   # Замените на реальные данные
+            # Получаем все сделки за сегодня
+            today = datetime.now(MarketSchedule.NY_TIMEZONE).date()
+            trades = self.trading_client.get_orders(
+                status="filled",
+                after=today.strftime("%Y-%m-%d")
+            )
+            
+            trades_today = len(trades)
+            
+            # Считаем реальный P&L
+            positions = self.trading_client.get_all_positions()
+            total_pnl = sum(float(pos.unrealized_pl) for pos in positions)
+            
+            # Считаем win rate по закрытым позициям
+            closed_positions = self.trading_client.get_portfolio_history(timeframe="1D")
+            profitable_trades = len([t for t in closed_positions if float(t.profit_loss) > 0])
+            total_trades = len(closed_positions)
+            win_rate = (profitable_trades / total_trades * 100) if total_trades > 0 else 0
+            
             return {
                 "trades_today": trades_today,
-                "pnl": pnl,
+                "pnl": total_pnl,
                 "win_rate": win_rate
             }
         except Exception as e:
