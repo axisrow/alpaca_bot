@@ -152,17 +152,6 @@ class PortfolioManager:
             except Exception as e:
                 logging.error(f"Ошибка открытия позиции {ticker}: {e}")
 
-    def run_backtest(self, start_date: str, end_date: str) -> Dict:
-        """Запуск бэктеста за указанный период"""
-        try:
-            from backtest import BacktestEngine
-            engine = BacktestEngine(sp500_tickers)
-            results = engine.run(start_date, end_date)
-            return results
-        except Exception as e:
-            logging.error(f"Ошибка при запуске бэктеста: {e}")
-            return None
-
 class TradingBot:
     """Основной класс торгового бота"""
     def __init__(self):

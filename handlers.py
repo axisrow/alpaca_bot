@@ -1,11 +1,8 @@
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
-from keyboards import main_kb, menu_kb, get_backtest_keyboard  
+from keyboards import main_kb, menu_kb
 import logging
-from datetime import datetime
-from backtest import BacktestEngine
-from config import sp500_tickers
 
 def setup_router(trading_bot):
     """Настройка роутера с доступом к TradingBot"""
@@ -26,7 +23,7 @@ def setup_router(trading_bot):
             "/start - Начать работу\n"
             "/help - Показать помощь\n\n"
             "Через меню доступны функции:\n"
-            "📊 Портфель!!! - просмотр текущих позиций\n"
+            "📊 Портфель - просмотр текущих позиций\n"
             "📈 Статистика - просмотр торговой статистики\n"
             "⚙️ Настройки - настройка параметров бота"
         )
@@ -77,7 +74,7 @@ def setup_router(trading_bot):
             
             msg += "\nПротфель:\n"
             msg += f"Оценка: {float(account.portfolio_value):.2f} euro\n"
-            msg += f"Эквити: {float(account.equity)::.2f} euro\n"
+            msg += f"Эквити: {float(account.equity):.2f} euro\n"
             msg += f"\nP&L: ${pnl:.2f} euro"
             
             await callback.message.answer(msg)
@@ -124,72 +121,6 @@ def setup_router(trading_bot):
         except Exception as e:
             logging.error(f"Ошибка при получении настроек: {e}")
             await callback.message.answer("❌ Ошибка при получении настроек")
-
-    @router.callback_query(F.data == "show_backtest")
-    async def show_backtest_menu(callback: CallbackQuery):
-        """Показать меню бэктестинга"""
-        await callback.message.edit_text(
-            "📊 Выберите период для бэктестинга:",
-            reply_markup=get_backtest_keyboard()
-        )
-
-    @router.callback_query(F.data == "back_to_main")
-    async def back_to_main_menu(callback: CallbackQuery):
-        """Возврат в главное меню"""
-        await callback.message.edit_text(
-            "Выберите действие:", 
-            reply_markup=menu_kb
-        )
-
-    @router.callback_query(F.data.startswith("backtest_"))
-    async def handle_backtest_period(callback: CallbackQuery):
-        """Обработка выбора периода бэктестинга"""
-        if callback.data == "backtest_custom":
-            await callback.message.edit_text(
-                "Введите даты для бэктеста в формате:\n"
-                "/backtest YYYY-MM-DD YYYY-MM-DD"
-            )
-            return
-            
-        _, start_date, end_date = callback.data.split('_')
-        await run_backtest_for_period(callback.message, start_date, end_date)
-
-    @router.message(Command("backtest"))
-    async def handle_custom_backtest(message: Message):
-        """Обработка команды с произвольным периодом"""
-        try:
-            _, start_date, end_date = message.text.split()
-            await run_backtest_for_period(message, start_date, end_date)
-        except ValueError:
-            await message.answer(
-                "❌ Неверный формат дат\n"
-                "Используйте формат: /backtest YYYY-MM-DD YYYY-MM-DD"
-            )
-
-    async def run_backtest_for_period(message: Message, start_date: str, end_date: str):
-        """Запуск бэктеста за указанный период"""
-        await message.answer("🔄 Запуск бэктеста...")
-        
-        engine = BacktestEngine(sp500_tickers)
-        results = engine.run(start_date, end_date)
-        
-        if not results:
-            await message.answer("❌ Ошибка при выполнении бэктеста")
-            return
-            
-        report = (
-            f"📊 Результаты бэктеста\n\n"
-            f"📅 Период: {start_date} - {end_date}\n"
-            f"📈 Общая доходность: {results['total_return']:.2f}%\n"
-            f"💰 Конечный капитал: ${results['final_value']:.2f}\n"
-            f"📉 Макс. просадка: {results['max_drawdown']:.2f}%\n"
-            f"📊 Коэф. Шарпа: {results['sharpe_ratio']:.2f}\n"
-            f"🔄 Всего сделок: {results['trades_count']}\n"
-            f"✅ Прибыльных сделок: {results['winning_trades']}\n"
-            f"📈 Win rate: {(results['winning_trades']/results['trades_count']*100):.1f}%"
-        )
-        
-        await message.answer(report)
 
     @router.message()
     async def echo(message: Message):
