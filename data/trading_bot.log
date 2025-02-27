@@ -614,3 +614,213 @@ aiogram.exceptions.TelegramBadRequest: Telegram server says - Bad Request: query
 2025-02-23 12:38:33,047 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
 2025-02-23 12:38:33,055 [INFO] Polling stopped
 2025-02-23 12:38:33,318 [INFO] Программа завершена
+2025-02-27 15:08:35,334 [INFO] === Запуск торгового бота ===
+2025-02-27 15:08:36,944 [INFO] Текущее время (NY): 2025-02-27 03:08:36 EST
+2025-02-27 15:08:36,944 [INFO] Статус рынка: закрыт
+2025-02-27 15:08:36,944 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:08:36,960 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:08:36,967 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:08:36,968 [INFO] Scheduler started
+2025-02-27 15:08:36,968 [INFO] Планировщик запущен
+2025-02-27 15:08:36,968 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:08:39,149 [INFO] Start polling
+2025-02-27 15:08:39,393 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:08:51,980 [WARNING] Received SIGINT signal
+2025-02-27 15:08:51,984 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:08:51,985 [INFO] Polling stopped
+2025-02-27 15:08:52,240 [INFO] Программа завершена
+2025-02-27 15:22:56,604 [INFO] === Запуск торгового бота ===
+2025-02-27 15:22:57,998 [INFO] Текущее время (NY): 2025-02-27 03:22:57 EST
+2025-02-27 15:22:57,998 [INFO] Статус рынка: закрыт
+2025-02-27 15:22:57,998 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:22:58,014 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:22:58,016 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:22:58,016 [INFO] Scheduler started
+2025-02-27 15:22:58,017 [INFO] Планировщик запущен
+2025-02-27 15:22:58,017 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:22:58,831 [INFO] Start polling
+2025-02-27 15:22:59,094 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:30:29,105 [WARNING] Received SIGINT signal
+2025-02-27 15:30:29,136 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:30:29,138 [INFO] Polling stopped
+2025-02-27 15:30:29,408 [INFO] Программа завершена
+2025-02-27 15:30:38,469 [INFO] === Запуск торгового бота ===
+2025-02-27 15:30:39,661 [INFO] Текущее время (NY): 2025-02-27 03:30:39 EST
+2025-02-27 15:30:39,662 [INFO] Статус рынка: закрыт
+2025-02-27 15:30:39,662 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:30:39,667 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:30:39,668 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:30:39,669 [INFO] Scheduler started
+2025-02-27 15:30:39,669 [INFO] Планировщик запущен
+2025-02-27 15:30:39,669 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:30:40,486 [INFO] Start polling
+2025-02-27 15:30:40,712 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:34:16,810 [WARNING] Received SIGINT signal
+2025-02-27 15:34:16,822 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:34:16,823 [INFO] Polling stopped
+2025-02-27 15:34:17,078 [INFO] Программа завершена
+2025-02-27 15:39:01,763 [INFO] === Запуск торгового бота ===
+2025-02-27 15:39:02,896 [INFO] Текущее время (NY): 2025-02-27 03:39:02 EST
+2025-02-27 15:39:02,897 [INFO] Статус рынка: закрыт
+2025-02-27 15:39:02,897 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:39:02,908 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:39:02,911 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:39:02,911 [INFO] Scheduler started
+2025-02-27 15:39:02,911 [INFO] Планировщик запущен
+2025-02-27 15:39:02,912 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:39:03,720 [INFO] Start polling
+2025-02-27 15:39:03,961 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:45:39,460 [WARNING] Received SIGINT signal
+2025-02-27 15:45:39,481 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:45:39,483 [INFO] Polling stopped
+2025-02-27 15:45:39,748 [INFO] Программа завершена
+2025-02-27 15:45:51,469 [INFO] === Запуск торгового бота ===
+2025-02-27 15:45:52,414 [INFO] Текущее время (NY): 2025-02-27 03:45:52 EST
+2025-02-27 15:45:52,415 [INFO] Статус рынка: закрыт
+2025-02-27 15:45:52,415 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:45:52,418 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:45:52,419 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:45:52,419 [INFO] Scheduler started
+2025-02-27 15:45:52,420 [INFO] Планировщик запущен
+2025-02-27 15:45:52,421 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:45:53,232 [INFO] Start polling
+2025-02-27 15:45:53,464 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:46:12,656 [WARNING] Received SIGINT signal
+2025-02-27 15:46:12,667 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:46:12,668 [INFO] Polling stopped
+2025-02-27 15:46:12,924 [INFO] Программа завершена
+2025-02-27 15:47:06,977 [INFO] === Запуск торгового бота ===
+2025-02-27 15:47:07,762 [INFO] Текущее время (NY): 2025-02-27 03:47:07 EST
+2025-02-27 15:47:07,763 [INFO] Статус рынка: закрыт
+2025-02-27 15:47:07,763 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:47:07,766 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:47:07,767 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:47:07,767 [INFO] Scheduler started
+2025-02-27 15:47:07,767 [INFO] Планировщик запущен
+2025-02-27 15:47:07,767 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:47:08,527 [INFO] Start polling
+2025-02-27 15:47:08,769 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:47:19,737 [WARNING] Received SIGINT signal
+2025-02-27 15:47:19,740 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:47:19,740 [INFO] Polling stopped
+2025-02-27 15:47:19,994 [INFO] Программа завершена
+2025-02-27 15:48:51,570 [INFO] === Запуск торгового бота ===
+2025-02-27 15:48:52,472 [INFO] Текущее время (NY): 2025-02-27 03:48:52 EST
+2025-02-27 15:48:52,473 [INFO] Статус рынка: закрыт
+2025-02-27 15:48:52,473 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:48:52,479 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:48:52,480 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:48:52,481 [INFO] Scheduler started
+2025-02-27 15:48:52,482 [INFO] Планировщик запущен
+2025-02-27 15:48:52,482 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:48:53,298 [INFO] Start polling
+2025-02-27 15:48:53,552 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:49:21,721 [INFO] Update id=581785620 is handled. Duration 785 ms by bot id=8169980837
+2025-02-27 15:49:27,022 [INFO] Update id=581785621 is handled. Duration 749 ms by bot id=8169980837
+2025-02-27 15:49:32,348 [INFO] Update id=581785622 is not handled. Duration 586 ms by bot id=8169980837
+2025-02-27 15:49:32,348 [ERROR] Cause exception while process update id=581785622 by bot id=8169980837
+AttributeError: 'TradingBot' object has no attribute 'run_backtest'
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 309, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 158, in feed_update
+    response = await self.update.wrap_outer_middleware(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/error.py", line 25, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/middlewares/user_context.py", line 56, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/fsm/middleware.py", line 42, in __call__
+    return await handler(event, data)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
+    return await wrapped()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/dispatcher.py", line 276, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 146, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 141, in _wrapped
+    return await self._propagate_event(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 174, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 146, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 141, in _wrapped
+    return await self._propagate_event(
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/router.py", line 166, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/aiogram/dispatcher/event/handler.py", line 43, in call
+    return await wrapped()
+  File "/Users/axisrow/Projects/alpaca_bot/handlers.py", line 158, in handle_backtest_period
+    await run_backtest_for_period(callback.message, start_date, end_date)
+  File "/Users/axisrow/Projects/alpaca_bot/handlers.py", line 176, in run_backtest_for_period
+    results = trading_bot.run_backtest(start_date, end_date)
+AttributeError: 'TradingBot' object has no attribute 'run_backtest'
+2025-02-27 15:51:31,438 [WARNING] Received SIGINT signal
+2025-02-27 15:51:31,442 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:51:31,442 [INFO] Polling stopped
+2025-02-27 15:51:31,698 [INFO] Программа завершена
+2025-02-27 15:51:41,589 [INFO] === Запуск торгового бота ===
+2025-02-27 15:51:42,409 [INFO] Текущее время (NY): 2025-02-27 03:51:42 EST
+2025-02-27 15:51:42,409 [INFO] Статус рынка: закрыт
+2025-02-27 15:51:42,409 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:51:42,416 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:51:42,418 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:51:42,418 [INFO] Scheduler started
+2025-02-27 15:51:42,418 [INFO] Планировщик запущен
+2025-02-27 15:51:42,419 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:51:43,302 [INFO] Start polling
+2025-02-27 15:51:43,827 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:51:48,674 [INFO] Update id=581785623 is handled. Duration 1097 ms by bot id=8169980837
+2025-02-27 15:52:49,372 [INFO] Update id=581785624 is handled. Duration 962 ms by bot id=8169980837
+2025-02-27 15:53:04,350 [ERROR] 
+1 Failed download:
+2025-02-27 15:53:04,351 [ERROR] ['LEN']: YFPricesMissingError('possibly delisted; no price data found  (1d 2024-02-28 -> 2025-02-27)')
+2025-02-27 15:53:04,724 [ERROR] Ошибка при выполнении бэктеста: Timestamp('2024-03-31 00:00:00')
+2025-02-27 15:53:05,512 [INFO] Update id=581785625 is handled. Duration 14315 ms by bot id=8169980837
+2025-02-27 15:53:48,989 [WARNING] Received SIGINT signal
+2025-02-27 15:53:48,995 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:53:48,996 [INFO] Polling stopped
+2025-02-27 15:53:49,258 [INFO] Программа завершена
+2025-02-27 15:56:02,463 [INFO] === Запуск торгового бота ===
+2025-02-27 15:56:03,544 [INFO] Текущее время (NY): 2025-02-27 03:56:03 EST
+2025-02-27 15:56:03,544 [INFO] Статус рынка: закрыт
+2025-02-27 15:56:03,544 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 15:56:03,554 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 15:56:03,555 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 15:56:03,555 [INFO] Scheduler started
+2025-02-27 15:56:03,556 [INFO] Планировщик запущен
+2025-02-27 15:56:03,556 [INFO] === Запуск Telegram бота ===
+2025-02-27 15:56:04,558 [INFO] Start polling
+2025-02-27 15:56:04,888 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 15:56:11,755 [INFO] Update id=581785626 is handled. Duration 825 ms by bot id=8169980837
+2025-02-27 15:56:13,933 [INFO] Update id=581785627 is handled. Duration 480 ms by bot id=8169980837
+2025-02-27 15:56:37,109 [ERROR] 
+1 Failed download:
+2025-02-27 15:56:37,109 [ERROR] ['LEN']: YFPricesMissingError('possibly delisted; no price data found  (1d 2023-02-28 -> 2025-02-27)')
+2025-02-27 15:56:39,086 [INFO] Update id=581785628 is handled. Duration 23264 ms by bot id=8169980837
+2025-02-27 16:00:30,870 [WARNING] Received SIGINT signal
+2025-02-27 16:00:30,886 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 16:00:30,886 [INFO] Polling stopped
+2025-02-27 16:00:31,143 [INFO] Программа завершена
+2025-02-27 16:00:37,151 [INFO] === Запуск торгового бота ===
+2025-02-27 16:00:38,105 [INFO] Текущее время (NY): 2025-02-27 04:00:38 EST
+2025-02-27 16:00:38,106 [INFO] Статус рынка: закрыт
+2025-02-27 16:00:38,106 [INFO] Причина: время вне сессии 09:30:00-16:00:00
+2025-02-27 16:00:38,113 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2025-02-27 16:00:38,114 [INFO] Added job "TradingBot.perform_rebalance" to job store "default"
+2025-02-27 16:00:38,115 [INFO] Scheduler started
+2025-02-27 16:00:38,115 [INFO] Планировщик запущен
+2025-02-27 16:00:38,115 [INFO] === Запуск Telegram бота ===
+2025-02-27 16:00:38,916 [INFO] Start polling
+2025-02-27 16:00:39,239 [INFO] Run polling for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 16:01:10,376 [ERROR] 
+1 Failed download:
+2025-02-27 16:01:10,376 [ERROR] ['LEN']: YFPricesMissingError('possibly delisted; no price data found  (1d 2023-02-28 -> 2025-02-27)')
+2025-02-27 16:01:35,508 [INFO] Update id=581785629 is handled. Duration 41308 ms by bot id=8169980837
+2025-02-27 16:02:21,562 [WARNING] Received SIGINT signal
+2025-02-27 16:02:21,564 [INFO] Polling stopped for bot @axisrow_bot id=8169980837 - 'testbot'
+2025-02-27 16:02:21,565 [INFO] Polling stopped
+2025-02-27 16:02:21,832 [INFO] Программа завершена

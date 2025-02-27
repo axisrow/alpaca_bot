@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from typing import List, Dict, Tuple
 from handlers import setup_router  # Исправленный импорт
+from strategy import MomentumStrategy
 
 import asyncio
 from aiogram import Bot, Dispatcher
@@ -112,22 +113,12 @@ class PortfolioManager:
     """Класс для управления портфелем"""
     def __init__(self, trading_client: TradingClient):
         self.trading_client = trading_client
-
+        self.strategy = MomentumStrategy(sp500_tickers)  # Добавьте эту строку
+    
     @retry_on_exception()
     def get_momentum_tickers(self) -> List[str]:
         """Получение топ-10 акций по моментуму"""
-        data = yf.download(sp500_tickers, period="1y", timeout=30)
-        if 'Close' not in data.columns:
-            raise KeyError("Столбец 'Close' отсутствует в данных")
-
-        momentum_returns = (
-            data['Close']
-            .dropna(axis=1)
-            .pct_change(periods=12 * 21)
-            .iloc[-1]
-            .nlargest(10)
-        )
-        return momentum_returns.index.tolist()
+        return self.strategy.get_momentum_tickers()
 
     @retry_on_exception()
     def get_current_positions(self) -> Dict[str, float]:
@@ -159,6 +150,17 @@ class PortfolioManager:
                 logging.info(f"Открыта позиция {ticker} на ${cash_per_position:.2f}")
             except Exception as e:
                 logging.error(f"Ошибка открытия позиции {ticker}: {e}")
+
+    def run_backtest(self, start_date: str, end_date: str) -> Dict:
+        """Запуск бэктеста за указанный период"""
+        try:
+            from backtest import BacktestEngine
+            engine = BacktestEngine(sp500_tickers)
+            results = engine.run(start_date, end_date)
+            return results
+        except Exception as e:
+            logging.error(f"Ошибка при запуске бэктеста: {e}")
+            return None
 
 class TradingBot:
     """Основной класс торгового бота"""
