@@ -22,6 +22,7 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from config import sp500_tickers, TELEGRAM_BOT_TOKEN
+from strategy import MomentumStrategy
 
 # Настройка логирования
 logging.basicConfig(
@@ -168,7 +169,7 @@ class TradingBot:
         self._load_environment()
         self.trading_client = self._setup_trading_client()
         self.market_schedule = MarketSchedule(self.trading_client)
-        self.portfolio_manager = PortfolioManager(self.trading_client)
+        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers) 
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
 
@@ -203,40 +204,8 @@ class TradingBot:
             logging.info(f"Ребалансировка отложена: {reason}")
             return
 
-        try:
-            logging.info("Начало ребалансировки портфеля")
-            top_tickers = self.portfolio_manager.get_momentum_tickers()
-            logging.info(f"Топ-10 акций по моментуму: {', '.join(top_tickers)}")
-            
-            current_positions = self.portfolio_manager.get_current_positions()
-            logging.info(f"Текущие позиции: {current_positions}")
-            
-            positions_to_close = [ticker for ticker in current_positions if ticker not in top_tickers]
-            positions_to_open = [ticker for ticker in top_tickers if ticker not in current_positions]
-            
-            logging.info(f"Позиции для закрытия: {positions_to_close}")
-            logging.info(f"Позиции для открытия: {positions_to_open}")
-            
-            if positions_to_close:
-                self.portfolio_manager.close_positions(positions_to_close)
-                time.sleep(5)
-            
-            if positions_to_open:
-                account = self.trading_client.get_account()
-                available_cash = float(account.cash)
-                if available_cash <= 0:
-                    logging.warning(f"Недостаточно средств: ${available_cash}")
-                    return
-                position_size = available_cash / len(positions_to_open)
-                if position_size < 1:
-                    logging.warning(f"Размер позиции слишком мал: ${position_size}")
-                    return
-                self.portfolio_manager.open_positions(positions_to_open, position_size)
-            
-            logging.info("Ребалансировка выполнена успешно")
-            self.rebalance_flag.write_flag()
-        except Exception as e:
-            logging.error(f"Ошибка при ребалансировке: {e}", exc_info=True)
+        self.strategy.rebalance()
+        self.rebalance_flag.write_flag()
 
     def start(self):
         """Запуск бота"""
