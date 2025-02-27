@@ -2,4 +2,3 @@
 __pycache__
 .tmp
 data/
-data/last_rebalance.txt

@@ -49,7 +49,7 @@ def setup_router(trading_bot):
         await callback.answer()
         try:
             # Получаем данные о портфеле из TradingBot
-            positions, account, pnl = trading_bot.get_portfolio_status()
+            positions, account, account_pnl = trading_bot.get_portfolio_status()
             
             # Проверяем, что данные получены корректно
             if not account:
@@ -73,9 +73,8 @@ def setup_router(trading_bot):
                 msg += "Позиции: нет открытых позиций\n"
             
             msg += "\nПротфель:\n"
-            msg += f"Оценка: {float(account.portfolio_value):.2f} euro\n"
-            msg += f"Эквити: {float(account.equity):.2f} euro\n"
-            msg += f"\nP&L: ${pnl:.2f} euro"
+            msg += f"Итого: {float(account.portfolio_value):.2f}\n"
+            msg += f"\nP&L: ${account_pnl:.2f}"
             
             await callback.message.answer(msg)
         except Exception as e:

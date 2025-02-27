@@ -114,7 +114,7 @@ class PortfolioManager:
     """Класс для управления портфелем"""
     def __init__(self, trading_client: TradingClient):
         self.trading_client = trading_client
-        self.strategy = MomentumStrategy(sp500_tickers)  # Добавьте эту строку
+        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers)
     
     @retry_on_exception()
     def get_momentum_tickers(self) -> List[str]:
@@ -158,7 +158,8 @@ class TradingBot:
         self._load_environment()
         self.trading_client = self._setup_trading_client()
         self.market_schedule = MarketSchedule(self.trading_client)
-        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers) 
+        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers)
+        self.portfolio_manager = PortfolioManager(self.trading_client)  # добавлено для корректной работы get_portfolio_status
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
 
@@ -235,11 +236,12 @@ class TradingBot:
             account = self.trading_client.get_account()
             
             # Расчет полного P&L
-            realized_pl = float(account.equity) - float(account.last_equity)
-            unrealized_pl = sum(float(pos.unrealized_pl) for pos in self.trading_client.get_all_positions())
-            total_pnl = realized_pl + unrealized_pl
+            # realized_pl = float(account.equity) - float(account.last_equity)
+            account_pnl = sum(float(pos.unrealized_pl) for pos in self.trading_client.get_all_positions())
+            # total_pnl = realized_pl + unrealized_pl
             
-            return positions, account, total_pnl
+            return positions, account, account_pnl
+        
         except Exception as e:
             logging.error(f"Ошибка при получении данных портфеля: {e}")
             return {}, None, 0
