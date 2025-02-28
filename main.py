@@ -21,7 +21,7 @@ from strategy import MomentumStrategy
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
-from config import sp500_tickers, TELEGRAM_BOT_TOKEN
+from config import snp500_tickers, TELEGRAM_BOT_TOKEN
 
 # Настройка логирования
 logging.basicConfig(
@@ -113,7 +113,7 @@ class PortfolioManager:
     """Класс для управления портфелем"""
     def __init__(self, trading_client: TradingClient):
         self.trading_client = trading_client
-        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers)
+        self.strategy = MomentumStrategy(self.trading_client, snp500_tickers)
     
     @retry_on_exception()
     def get_current_positions(self) -> Dict[str, float]:
