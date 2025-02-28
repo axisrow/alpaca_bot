@@ -15,14 +15,13 @@ import yfinance as yf
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from typing import List, Dict, Tuple
-from handlers import setup_router  # Исправленный импорт
+from handlers import setup_router
 from strategy import MomentumStrategy
 
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from config import sp500_tickers, TELEGRAM_BOT_TOKEN
-from strategy import MomentumStrategy
 
 # Настройка логирования
 logging.basicConfig(
@@ -117,11 +116,6 @@ class PortfolioManager:
         self.strategy = MomentumStrategy(self.trading_client, sp500_tickers)
     
     @retry_on_exception()
-    def get_momentum_tickers(self) -> List[str]:
-        """Получение топ-10 акций по моментуму"""
-        return self.strategy.get_momentum_tickers()
-
-    @retry_on_exception()
     def get_current_positions(self) -> Dict[str, float]:
         """Получение текущих позиций"""
         positions = self.trading_client.get_all_positions()
@@ -158,8 +152,7 @@ class TradingBot:
         self._load_environment()
         self.trading_client = self._setup_trading_client()
         self.market_schedule = MarketSchedule(self.trading_client)
-        self.strategy = MomentumStrategy(self.trading_client, sp500_tickers)
-        self.portfolio_manager = PortfolioManager(self.trading_client)  # добавлено для корректной работы get_portfolio_status
+        self.portfolio_manager = PortfolioManager(self.trading_client)
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
 
@@ -194,7 +187,8 @@ class TradingBot:
             logging.info(f"Ребалансировка отложена: {reason}")
             return
 
-        self.strategy.rebalance()
+        # Вызываем ребалансировку напрямую через стратегию
+        self.portfolio_manager.strategy.rebalance()
         self.rebalance_flag.write_flag()
 
     def start(self):
@@ -234,11 +228,7 @@ class TradingBot:
         try:
             positions = self.portfolio_manager.get_current_positions()
             account = self.trading_client.get_account()
-            
-            # Расчет полного P&L
-            # realized_pl = float(account.equity) - float(account.last_equity)
             account_pnl = sum(float(pos.unrealized_pl) for pos in self.trading_client.get_all_positions())
-            # total_pnl = realized_pl + unrealized_pl
             
             return positions, account, account_pnl
         
@@ -304,7 +294,7 @@ class TelegramBot:
 
     def setup_handlers(self):
         """Настройка обработчиков команд"""
-        self.dp.include_router(self.router)  # Предполагается, что router настроен корректно
+        self.dp.include_router(self.router)
 
     async def start(self):
         """Запуск Telegram бота"""
