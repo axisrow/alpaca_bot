@@ -1,40 +1,36 @@
-import yfinance as yf
+"""Модуль с торговыми стратегиями."""
 import logging
-from datetime import datetime
 import time
-from typing import List, Dict
+from typing import Dict, List
+
+import yfinance as yf
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
-from functools import wraps
 
-def retry_on_exception(retries: int = 3, delay: int = 1):
-    """Декоратор для повторных попыток выполнения функции при исключении"""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            for attempt in range(retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == retries - 1:
-                        raise
-                    logging.warning(f"Попытка {attempt + 1} не удалась: {e}")
-                    time.sleep(delay)
-            return None
-        return wrapper
-    return decorator
+from utils import retry_on_exception
+
 
 class MomentumStrategy:
-    """Класс реализующий торговую стратегию на основе моментума"""
-    
+    """Класс реализующий торговую стратегию на основе моментума."""
+
     def __init__(self, trading_client: TradingClient, tickers: List[str]):
+        """Инициализация стратегии.
+
+        Args:
+            trading_client: Клиент для работы с Alpaca API
+            tickers: Список тикеров для торговли
+        """
         self.trading_client = trading_client
         self.tickers = tickers
-        
-    @retry_on_exception() 
+
+    @retry_on_exception()
     def get_signals(self) -> List[str]:
-        """Получение торговых сигналов - топ-10 акций по моментуму"""
+        """Получение торговых сигналов - топ-10 акций по моментуму.
+
+        Returns:
+            List[str]: Список тикеров с наивысшим моментумом
+        """
         data = yf.download(self.tickers, period="1y", timeout=30)
         if 'Close' not in data.columns:
             raise KeyError("Столбец 'Close' отсутствует в данных")
@@ -50,21 +46,35 @@ class MomentumStrategy:
 
     @retry_on_exception()
     def get_positions(self) -> Dict[str, float]:
-        """Получение текущих позиций"""
+        """Получение текущих позиций.
+
+        Returns:
+            Dict[str, float]: Словарь текущих позиций
+        """
         positions = self.trading_client.get_all_positions()
         return {pos.symbol: float(pos.qty) for pos in positions}
 
     def close_positions(self, positions: List[str]) -> None:
-        """Закрытие указанных позиций"""
+        """Закрытие указанных позиций.
+
+        Args:
+            positions: Список тикеров для закрытия
+        """
         for ticker in positions:
             try:
                 self.trading_client.close_position(ticker)
-                logging.info(f"Позиция {ticker} закрыта")
-            except Exception as e:
-                logging.error(f"Ошибка закрытия позиции {ticker}: {e}")
+                logging.info("Позиция %s закрыта", ticker)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error("Ошибка закрытия позиции %s: %s", ticker, exc)
 
-    def open_positions(self, tickers: List[str], cash_per_position: float) -> None:
-        """Открытие новых позиций"""
+    def open_positions(self, tickers: List[str],
+                       cash_per_position: float) -> None:
+        """Открытие новых позиций.
+
+        Args:
+            tickers: Список тикеров для открытия
+            cash_per_position: Размер позиции в долларах
+        """
         for ticker in tickers:
             try:
                 order = MarketOrderRequest(
@@ -75,51 +85,67 @@ class MomentumStrategy:
                     time_in_force=TimeInForce.DAY
                 )
                 self.trading_client.submit_order(order)
-                logging.info(f"Открыта позиция {ticker} на ${cash_per_position:.2f}")
-            except Exception as e:
-                logging.error(f"Ошибка открытия позиции {ticker}: {e}")
+                logging.info(
+                    "Открыта позиция %s на $%.2f",
+                    ticker,
+                    cash_per_position
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error("Ошибка открытия позиции %s: %s", ticker, exc)
 
     def rebalance(self) -> None:
-        """Ребалансировка портфеля"""
+        """Ребалансировка портфеля."""
         try:
             logging.info("Начало ребалансировки портфеля")
-            
+
             # Получаем сигналы торговой стратегии
             top_tickers = self.get_signals()
-            logging.info(f"Топ-10 акций по моментуму: {', '.join(top_tickers)}")
-            
+            logging.info("Топ-10 акций по моментуму: %s", ', '.join(top_tickers))
+
             # Получаем текущие позиции
             current_positions = self.get_positions()
-            logging.info(f"Текущие позиции: {current_positions}")
-            
+            logging.info("Текущие позиции: %s", current_positions)
+
             # Определяем позиции для закрытия и открытия
-            positions_to_close = [ticker for ticker in current_positions if ticker not in top_tickers]
-            positions_to_open = [ticker for ticker in top_tickers if ticker not in current_positions]
-            
-            logging.info(f"Позиции для закрытия: {positions_to_close}")
-            logging.info(f"Позиции для открытия: {positions_to_open}")
-            
+            positions_to_close = [
+                ticker for ticker in current_positions
+                if ticker not in top_tickers
+            ]
+            positions_to_open = [
+                ticker for ticker in top_tickers
+                if ticker not in current_positions
+            ]
+
+            logging.info("Позиции для закрытия: %s", positions_to_close)
+            logging.info("Позиции для открытия: %s", positions_to_open)
+
             # Закрываем ненужные позиции
             if positions_to_close:
                 self.close_positions(positions_to_close)
                 time.sleep(5)
-            
+
             # Открываем новые позиции
             if positions_to_open:
                 account = self.trading_client.get_account()
                 available_cash = float(account.cash)
                 if available_cash <= 0:
-                    logging.warning(f"Недостаточно средств: ${available_cash}")
+                    logging.warning(
+                        "Недостаточно средств: $%.2f",
+                        available_cash
+                    )
                     return
-                    
+
                 position_size = available_cash / len(positions_to_open)
                 if position_size < 1:
-                    logging.warning(f"Размер позиции слишком мал: ${position_size}")
+                    logging.warning(
+                        "Размер позиции слишком мал: $%.2f",
+                        position_size
+                    )
                     return
-                    
+
                 self.open_positions(positions_to_open, position_size)
-            
+
             logging.info("Ребалансировка выполнена успешно")
-            
-        except Exception as e:
-            logging.error(f"Ошибка при ребалансировке: {e}", exc_info=True)
+
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Ошибка при ребалансировке: %s", exc, exc_info=True)

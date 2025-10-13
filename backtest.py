@@ -1,66 +1,140 @@
-import yfinance as yf
-import pandas as pd
+"""Модуль для бэктестинга торговой стратегии."""
 import logging
-import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+from typing import Dict, List
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import yfinance as yf
+from alpaca.trading.enums import OrderSide
+
 from config import snp500_tickers
 from strategy import MomentumStrategy
-from alpaca.trading.enums import OrderSide  # для FakeTradingClient
 
 # =======================
 # НАСТРОЙКИ БЭКТЕСТА
 # =======================
 INITIAL_CASH = 100000.0
-START_DATE = datetime(2025, 2, 26)
-END_DATE = datetime(2025, 2, 28)
-REBALANCING_FREQUENCY = 'D'  # Ребалансировка по дням (можно изменить на 'M' для месячной и т.п.)
+START_DATE = datetime(2025, 3, 1)
+END_DATE = datetime(2025, 3, 3)
+# Ребалансировка по дням (можно изменить на 'M' для месячной и т.п.)
+REBALANCING_FREQUENCY = 'D'
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-# Фейковые классы для симуляции торгового клиента
 
 class FakePosition:
-    def __init__(self, symbol, qty):
+    """Фейковая позиция для симуляции."""
+
+    def __init__(self, symbol: str, qty: float):
+        """Инициализация позиции.
+
+        Args:
+            symbol: Тикер
+            qty: Количество акций
+        """
         self.symbol = symbol
         self.qty = qty
 
+
 class FakeAccount:
-    def __init__(self, cash):
+    """Фейковый аккаунт для симуляции."""
+
+    def __init__(self, cash: float):
+        """Инициализация аккаунта.
+
+        Args:
+            cash: Наличные средства
+        """
         self.cash = cash
 
+
 class FakeTradingClient:
+    """Фейковый торговый клиент для симуляции."""
+
     def __init__(self, initial_cash: float, prices: pd.DataFrame):
+        """Инициализация клиента.
+
+        Args:
+            initial_cash: Начальный капитал
+            prices: DataFrame с историческими ценами
+        """
         self.cash = initial_cash
-        self.positions = {}  # формат: {ticker: qty}
+        self.positions: Dict[str, float] = {}
         self.prices = prices
         self.current_date = None
-        self.trade_history = []  # Список для записи всех сделок
+        self.trade_history: List[Dict] = []
 
-    def set_current_date(self, date: pd.Timestamp):
+    def set_current_date(self, date: pd.Timestamp) -> None:
+        """Установка текущей даты для симуляции.
+
+        Args:
+            date: Дата для установки
+        """
         self.current_date = date
 
     def get_price(self, ticker: str) -> float:
+        """Получение цены для тикера на текущую дату.
+
+        Args:
+            ticker: Тикер
+
+        Returns:
+            float: Цена акции
+        """
         try:
-            price = self.prices[ticker].reindex([self.current_date], method='nearest').iloc[0]
-            return price
-        except Exception as e:
-            raise ValueError(f"Не удалось получить цену для {ticker} на {self.current_date}") from e
+            price = self.prices[ticker].reindex(
+                [self.current_date],
+                method='nearest'
+            ).iloc[0]
+            return float(price)
+        except Exception as exc:
+            raise ValueError(
+                f"Не удалось получить цену для {ticker} "
+                f"на {self.current_date}"
+            ) from exc
 
-    def get_all_positions(self):
-        return [FakePosition(ticker, qty) for ticker, qty in self.positions.items()]
+    def get_all_positions(self) -> List[FakePosition]:
+        """Получение всех позиций.
 
-    def get_account(self):
+        Returns:
+            List[FakePosition]: Список позиций
+        """
+        return [FakePosition(ticker, qty)
+                for ticker, qty in self.positions.items()]
+
+    def get_account(self) -> FakeAccount:
+        """Получение информации об аккаунте.
+
+        Returns:
+            FakeAccount: Информация об аккаунте
+        """
         return FakeAccount(self.cash)
 
-    def close_position(self, ticker: str):
+    def close_position(self, ticker: str) -> None:
+        """Закрытие позиции.
+
+        Args:
+            ticker: Тикер для закрытия
+        """
         if ticker not in self.positions:
             raise ValueError(f"Позиция по {ticker} отсутствует")
         price = self.get_price(ticker)
         qty = self.positions[ticker]
         proceeds = qty * price
         self.cash += proceeds
-        logging.info(f"Фейковый клиент: продана позиция {ticker} ({qty} акций по ${price:.2f}), получено ${proceeds:.2f}")
+        logging.info(
+            "Фейковый клиент: продана позиция %s (%s акций по $%.2f), "
+            "получено $%.2f",
+            ticker,
+            qty,
+            price,
+            proceeds
+        )
         # Запись сделки на продажу
         self.trade_history.append({
             'date': self.current_date,
@@ -72,18 +146,37 @@ class FakeTradingClient:
         })
         del self.positions[ticker]
 
-    def submit_order(self, order):
+    def submit_order(self, order) -> None:
+        """Отправка ордера на исполнение.
+
+        Args:
+            order: Ордер для исполнения
+        """
         if order.side == OrderSide.BUY:
             price = self.get_price(order.symbol)
             shares = int(order.notional // price)
             if shares <= 0:
-                raise ValueError(f"Недостаточно средств для покупки хотя бы 1 акции {order.symbol}")
+                raise ValueError(
+                    f"Недостаточно средств для покупки хотя бы 1 акции "
+                    f"{order.symbol}"
+                )
             cost = shares * price
             if cost > self.cash:
-                raise ValueError(f"Недостаточно наличных для покупки {order.symbol}")
+                raise ValueError(
+                    f"Недостаточно наличных для покупки {order.symbol}"
+                )
             self.cash -= cost
-            self.positions[order.symbol] = self.positions.get(order.symbol, 0) + shares
-            logging.info(f"Фейковый клиент: куплено {shares} акций {order.symbol} по ${price:.2f}, затрачено ${cost:.2f}")
+            self.positions[order.symbol] = (
+                self.positions.get(order.symbol, 0) + shares
+            )
+            logging.info(
+                "Фейковый клиент: куплено %s акций %s по $%.2f, "
+                "затрачено $%.2f",
+                shares,
+                order.symbol,
+                price,
+                cost
+            )
             # Запись сделки на покупку
             self.trade_history.append({
                 'date': self.current_date,
@@ -96,25 +189,58 @@ class FakeTradingClient:
         else:
             raise NotImplementedError("Поддерживаются только ордера на покупку")
 
-# Подкласс для бэктеста, переопределяем метод get_signals для работы с историческими данными
+
 class BacktestMomentumStrategy(MomentumStrategy):
-    def __init__(self, trading_client, tickers, prices, current_date):
+    """Подкласс стратегии для бэктеста с историческими данными."""
+
+    def __init__(
+        self,
+        trading_client,
+        tickers: List[str],
+        prices: pd.DataFrame,
+        current_date: pd.Timestamp
+    ):
+        """Инициализация стратегии для бэктеста.
+
+        Args:
+            trading_client: Торговый клиент
+            tickers: Список тикеров
+            prices: DataFrame с историческими ценами
+            current_date: Текущая дата для симуляции
+        """
         super().__init__(trading_client, tickers)
         self.prices = prices
         self.current_date = current_date
 
-    def get_signals(self) -> list:
+    def get_signals(self) -> List[str]:
+        """Получение сигналов на основе исторических данных.
+
+        Returns:
+            List[str]: Список тикеров с наивысшим моментумом
+        """
         one_year_ago = self.current_date - timedelta(days=365)
         try:
-            price_start = self.prices.reindex([one_year_ago], method='nearest').iloc[0]
-            price_end = self.prices.reindex([self.current_date], method='nearest').iloc[0]
-        except Exception as e:
-            logging.error(f"Ошибка получения цен для расчёта импульса на {self.current_date}: {e}")
+            price_start = self.prices.reindex(
+                [one_year_ago],
+                method='nearest'
+            ).iloc[0]
+            price_end = self.prices.reindex(
+                [self.current_date],
+                method='nearest'
+            ).iloc[0]
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error(
+                "Ошибка получения цен для расчёта импульса на %s: %s",
+                self.current_date,
+                exc
+            )
             return []
         momentum = (price_end / price_start - 1).nlargest(10)
         return momentum.index.tolist()
 
-def main():
+
+def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
+    """Основная функция бэктестинга."""
     # ---------------------------
     # ЗАГРУЗКА И ПОДГОТОВКА ДАННЫХ
     # ---------------------------
@@ -134,9 +260,9 @@ def main():
             if 'Close' in ticker_df.columns:
                 close_data[ticker] = ticker_df['Close']
             else:
-                logging.warning(f"Нет данных 'Close' для {ticker}")
-        except Exception as e:
-            logging.warning(f"Ошибка загрузки данных для {ticker}: {e}")
+                logging.warning("Нет данных 'Close' для %s", ticker)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.warning("Ошибка загрузки данных для %s: %s", ticker, exc)
 
     prices = pd.DataFrame(close_data)
     if prices.empty:
@@ -151,27 +277,42 @@ def main():
         return
 
     trading_dates = prices.index
-    rebalancing_dates = trading_dates[trading_dates >= START_DATE].to_series().resample(REBALANCING_FREQUENCY).last().dropna()
+    rebalancing_dates = (
+        trading_dates[trading_dates >= START_DATE]
+        .to_series()
+        .resample(REBALANCING_FREQUENCY)
+        .last()
+        .dropna()
+    )
 
     # ---------------------------
     # ИНИЦИАЛИЗАЦИЯ КЛИЕНТА, СТРАТЕГИИ И ДОКУМЕНТАЦИЯ ТРАНЗАКЦИЙ
     # ---------------------------
     fake_client = FakeTradingClient(INITIAL_CASH, prices)
-    strategy = BacktestMomentumStrategy(fake_client, available_tickers, prices, current_date=rebalancing_dates.index[0])
-    portfolio_history = []  # Для сохранения динамики портфеля
+    strategy = BacktestMomentumStrategy(
+        fake_client,
+        available_tickers,
+        prices,
+        current_date=rebalancing_dates.index[0]
+    )
+    portfolio_history: List[Dict] = []
 
     # ---------------------------
     # ЦИКЛ БЭКТЕСТА
     # ---------------------------
     for current_date in rebalancing_dates.index:
-        logging.info(f"\n--- Ребалансировка на {current_date.date()} ---")
+        logging.info("\n--- Ребалансировка на %s ---", current_date.date())
         fake_client.set_current_date(current_date)
         strategy.current_date = current_date
 
         try:
             strategy.rebalance()
-        except Exception as e:
-            logging.error(f"Ошибка при ребалансировке на {current_date.date()}: {e}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error(
+                "Ошибка при ребалансировке на %s: %s",
+                current_date.date(),
+                exc
+            )
 
         # Рассчитываем стоимость портфеля на текущую дату
         total_value = fake_client.cash
@@ -179,10 +320,22 @@ def main():
             try:
                 price = fake_client.get_price(ticker)
                 total_value += qty * price
-            except Exception as e:
-                logging.warning(f"Не удалось получить цену для {ticker} на {current_date.date()}: {e}")
-        logging.info(f"Стоимость портфеля на {current_date.date()}: ${total_value:.2f}")
-        portfolio_history.append({'date': current_date, 'portfolio_value': total_value})
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.warning(
+                    "Не удалось получить цену для %s на %s: %s",
+                    ticker,
+                    current_date.date(),
+                    exc
+                )
+        logging.info(
+            "Стоимость портфеля на %s: $%.2f",
+            current_date.date(),
+            total_value
+        )
+        portfolio_history.append({
+            'date': current_date,
+            'portfolio_value': total_value
+        })
 
     # Финальная оценка портфеля
     final_date = rebalancing_dates.index[-1]
@@ -191,9 +344,18 @@ def main():
         try:
             price = fake_client.get_price(ticker)
             final_value += qty * price
-        except Exception as e:
-            logging.warning(f"Не удалось получить цену для {ticker} на {final_date.date()}: {e}")
-    logging.info(f"\nФинальная стоимость портфеля на {final_date.date()}: ${final_value:.2f}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.warning(
+                "Не удалось получить цену для %s на %s: %s",
+                ticker,
+                final_date.date(),
+                exc
+            )
+    logging.info(
+        "\nФинальная стоимость портфеля на %s: $%.2f",
+        final_date.date(),
+        final_value
+    )
 
     # ---------------------------
     # ВИЗУАЛИЗАЦИЯ ДОХОДНОСТИ ПОРТФЕЛЯ
@@ -216,6 +378,7 @@ def main():
     trades_df = pd.DataFrame(fake_client.trade_history)
     trades_df.to_csv("data/trades_history.csv", index=False)
     logging.info("История сделок сохранена в файл data/trades_history.csv")
+
 
 if __name__ == "__main__":
     main()
