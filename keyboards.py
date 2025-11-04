@@ -1,6 +1,4 @@
 """Модуль с клавиатурами для Telegram бота."""
-from datetime import datetime, timedelta
-
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -8,7 +6,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup
 )
 
-__all__ = ['main_kb', 'menu_kb', 'get_backtest_keyboard']
+__all__ = ['main_kb', 'menu_kb']
 
 # Основная клавиатура
 main_kb = ReplyKeyboardMarkup(
@@ -26,63 +24,7 @@ menu_kb = InlineKeyboardMarkup(
                               callback_data="portfolio_status")],
         [InlineKeyboardButton(text="📈 Статистика",
                               callback_data="trading_stats")],
-        [InlineKeyboardButton(text="📊 Бэктест",
-                              callback_data="show_backtest")],
         [InlineKeyboardButton(text="⚙️ Настройки",
                               callback_data="settings")]
     ]
 )
-
-
-def get_backtest_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для бэктестинга.
-
-    Returns:
-        InlineKeyboardMarkup: Клавиатура с кнопками для бэктеста
-    """
-    today = datetime.now()
-    year_ago = (today - timedelta(days=365)).strftime("%Y-%m-%d")
-    today_str = today.strftime("%Y-%m-%d")
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📊 Последний год",
-                    callback_data=f"backtest_{year_ago}_{today_str}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📈 6 месяцев",
-                    callback_data=(
-                        f"backtest_"
-                        f"{(today - timedelta(days=180)).strftime('%Y-%m-%d')}_"
-                        f"{today_str}"
-                    )
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📉 3 месяца",
-                    callback_data=(
-                        f"backtest_"
-                        f"{(today - timedelta(days=90)).strftime('%Y-%m-%d')}_"
-                        f"{today_str}"
-                    )
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔄 Произвольный период",
-                    callback_data="backtest_custom"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔙 Назад",
-                    callback_data="back_to_main"
-                )
-            ]
-        ]
-    )

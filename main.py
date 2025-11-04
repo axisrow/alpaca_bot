@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, time as dt_time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 import pytz
 from aiogram import Bot, Dispatcher
@@ -132,45 +132,6 @@ class PortfolioManager:
         """
         positions = self.trading_client.get_all_positions()
         return {pos.symbol: float(pos.qty) for pos in positions}  # type: ignore[attr-defined]
-
-    def close_positions(self, positions: List[str]) -> None:
-        """Закрытие указанных позиций.
-
-        Args:
-            positions: Список тикеров для закрытия
-        """
-        for ticker in positions:
-            try:
-                self.trading_client.close_position(ticker)
-                logging.info("Позиция %s закрыта", ticker)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Ошибка закрытия позиции %s: %s", ticker, exc)
-
-    def open_positions(self, tickers: List[str],
-                       cash_per_position: float) -> None:
-        """Открытие новых позиций.
-
-        Args:
-            tickers: Список тикеров для открытия
-            cash_per_position: Размер позиции в долларах
-        """
-        for ticker in tickers:
-            try:
-                order = MarketOrderRequest(
-                    symbol=ticker,
-                    notional=cash_per_position,
-                    side=OrderSide.BUY,
-                    type=OrderType.MARKET,
-                    time_in_force=TimeInForce.DAY
-                )
-                self.trading_client.submit_order(order)
-                logging.info(
-                    "Открыта позиция %s на $%.2f",
-                    ticker,
-                    cash_per_position
-                )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Ошибка открытия позиции %s: %s", ticker, exc)
 
 
 class TradingBot:

@@ -35,6 +35,5 @@ def retry_on_exception(
                         exc
                     )
                     time.sleep(delay)
-            return None  # type: ignore
         return wrapper
     return decorator
