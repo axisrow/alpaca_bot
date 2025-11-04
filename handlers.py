@@ -79,19 +79,18 @@ def setup_router(trading_bot):
         msg = "Portfolio Status:\n\n"
 
         if positions:
+            all_positions = trading_bot.trading_client.get_all_positions()
+            positions_dict = {p.symbol: p for p in all_positions}
+
             msg += "Positions:\n"
-            for symbol, qty in positions.items():
-                # Get market value for position
-                all_positions = trading_bot.trading_client.get_all_positions()
-                position = next((p for p in all_positions
-                                 if p.symbol == symbol), None)
-                if position:
-                    value = float(position.market_value)
-                    msg += (f"{symbol} – {float(qty):.2f} shares "
-                            f"(${value:.2f})\n")
-                else:
-                    msg += (f"{symbol} – {float(qty):.2f} shares "
-                            f"(no price data)\n")
+            msg += "\n".join(
+                f"{symbol} – {float(qty):.2f} shares "
+                f"(${float(positions_dict[symbol].market_value):.2f})"
+                if symbol in positions_dict else
+                f"{symbol} – {float(qty):.2f} shares (no price data)"
+                for symbol, qty in positions.items()
+            )
+            msg += "\n"
         else:
             msg += "Positions: No open positions\n"
 
@@ -112,10 +111,12 @@ def setup_router(trading_bot):
         if not stats:
             raise ValueError("Statistics unavailable")
 
-        msg = "Trading Statistics:\n"
-        msg += f"Trades today: {stats.get('trades_today', 0)}\n"
-        msg += f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
-        msg += f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
+        msg = (
+            f"Trading Statistics:\n"
+            f"Trades today: {stats.get('trades_today', 0)}\n"
+            f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
+            f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
+        )
         await message.answer(msg)
 
     @router.message(Command("settings"))
@@ -129,12 +130,12 @@ def setup_router(trading_bot):
         if not settings:
             raise ValueError("Settings unavailable")
 
-        msg = "Bot Settings:\n"
-        msg += (f"- Rebalance time: "
-                f"{settings.get('rebalance_time', 'not set')}\n")
-        msg += (f"- Number of positions: "
-                f"{settings.get('positions_count', 0)}\n")
-        msg += f"- Mode: {settings.get('mode', 'not set')}"
+        msg = (
+            f"Bot Settings:\n"
+            f"- Rebalance time: {settings.get('rebalance_time', 'not set')}\n"
+            f"- Number of positions: {settings.get('positions_count', 0)}\n"
+            f"- Mode: {settings.get('mode', 'not set')}"
+        )
         await message.answer(msg)
 
     @router.message()

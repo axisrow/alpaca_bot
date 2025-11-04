@@ -23,17 +23,13 @@ def retry_on_exception(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
-            for attempt in range(retries):
+            for attempt in range(1, retries + 1):
                 try:
                     return func(*args, **kwargs)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
-                    if attempt == retries - 1:
+                    if attempt == retries:
                         raise
-                    logging.warning(
-                        "Attempt %d failed: %s",
-                        attempt + 1,
-                        exc
-                    )
+                    logging.warning("Attempt %d failed: %s", attempt, exc)
                     time.sleep(delay)
         return wrapper
     return decorator

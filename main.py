@@ -148,10 +148,9 @@ class MarketSchedule:
     @property
     def is_open(self) -> bool:
         """Check if market is open."""
-        is_open, reason = self.check_market_status()
-        if not is_open:
-            logging.info("Market is closed: %s", reason)
-        return is_open
+        if not (status := self.check_market_status())[0]:
+            logging.info("Market is closed: %s", status[1])
+        return status[0]
 
     def count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
         """Count trading days between two dates.
@@ -164,22 +163,14 @@ class MarketSchedule:
             int: Number of trading days (weekdays only)
         """
         # Add NY timezone if dates don't have one
-        if start_date.tzinfo is None:
-            start_date = NY_TIMEZONE.localize(start_date)
-        if end_date.tzinfo is None:
-            end_date = NY_TIMEZONE.localize(end_date)
+        start_date = start_date if start_date.tzinfo else NY_TIMEZONE.localize(start_date)
+        end_date = end_date if end_date.tzinfo else NY_TIMEZONE.localize(end_date)
 
-        trading_days = 0
-        current = start_date.date()
-        end = end_date.date()
-
-        while current <= end:
-            # Count only weekdays (Mon-Fri), 0-4 are Mon-Fri
-            if current.weekday() < 5 and current > start_date.date():
-                trading_days += 1
-            current += timedelta(days=1)
-
-        return trading_days
+        start, end = start_date.date(), end_date.date()
+        return sum(
+            1 for day_offset in range(1, (end - start).days + 1)
+            if (current_day := start + timedelta(days=day_offset)).weekday() < 5
+        )
 
 
 class PortfolioManager:
@@ -231,7 +222,7 @@ class TradingBot:
         self.secret_key = os.getenv("ALPACA_SECRET_KEY")
         self.base_url = "https://paper-api.alpaca.markets"
 
-        if not self.api_key or not self.secret_key:
+        if not all([self.api_key, self.secret_key]):
             logging.error("Missing API keys!")
             sys.exit(1)
 
@@ -278,13 +269,10 @@ class TradingBot:
         logging.info("=== Starting trading bot ===")
         is_open, reason = self.market_schedule.check_market_status()
         now_ny = datetime.now(NY_TIMEZONE)
-        logging.info(
-            "Current time (NY): %s",
-            now_ny.strftime('%Y-%m-%d %H:%M:%S %Z')
-        )
-        logging.info("Market status: %s", 'open' if is_open else 'closed')
-        if not is_open:
-            logging.info("Reason: %s", reason)
+        logging.info("Current time (NY): %s", now_ny.strftime('%Y-%m-%d %H:%M:%S %Z'))
+        logging.info("Market status: %s%s",
+                     'open' if is_open else 'closed',
+                     f" (Reason: {reason})" if not is_open else "")
         if not self.scheduler.running:
             self.scheduler.add_job(
                 self.perform_rebalance,
@@ -329,8 +317,7 @@ class TradingBot:
             positions = self.portfolio_manager.get_current_positions()
             account = self.trading_client.get_account()
             all_positions = self.trading_client.get_all_positions()
-            account_pnl = sum(float(pos.unrealized_pl)  # type: ignore[attr-defined]
-                              for pos in all_positions)
+            account_pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in all_positions)
 
             return positions, account, account_pnl
 
@@ -360,7 +347,7 @@ class TradingBot:
 
             # Calculate real P&L
             positions = self.trading_client.get_all_positions()
-            total_pnl = sum(float(pos.unrealized_pl) for pos in positions)  # type: ignore[attr-defined]
+            total_pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in positions)
 
             return {
                 "trades_today": trades_today,
@@ -415,18 +402,17 @@ class TradingBot:
 
         # Start from the last rebalance date and count forward 22 trading days
         current = last_date.date()
-        trading_days_counted = 0
-
-        while trading_days_counted < REBALANCE_INTERVAL_DAYS:
-            current += timedelta(days=1)
-            # Count only weekdays (Mon-Fri)
-            if current.weekday() < 5:
-                trading_days_counted += 1
-
-        # Return the date as datetime object in NY timezone
-        return NY_TIMEZONE.localize(
-            datetime.combine(current, dt_time(10, 0))
+        trading_days = (
+            current + timedelta(days=i)
+            for i in range(1, 365)
+            if (current + timedelta(days=i)).weekday() < 5
         )
+        next_date = next(
+            d for idx, d in enumerate(trading_days)
+            if idx == REBALANCE_INTERVAL_DAYS - 1
+        )
+
+        return NY_TIMEZONE.localize(datetime.combine(next_date, dt_time(10, 0)))
 
 
 class TelegramBot:
@@ -521,23 +507,13 @@ class TelegramBot:
     def send_daily_countdown_sync(self) -> None:
         """Sync wrapper for sending countdown (for scheduler)."""
         try:
-            # Get running event loop or create new one
             try:
                 loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # No running loop, use asyncio.run
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(self.send_daily_countdown())
-                finally:
-                    loop.close()
-            else:
-                # Running loop exists, use run_coroutine_threadsafe
-                future = asyncio.run_coroutine_threadsafe(
+                asyncio.run_coroutine_threadsafe(
                     self.send_daily_countdown(), loop
-                )
-                future.result(timeout=30)
+                ).result(timeout=30)
+            except RuntimeError:
+                asyncio.run(self.send_daily_countdown())
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error sending countdown: %s", exc)
 

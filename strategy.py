@@ -35,14 +35,13 @@ class MomentumStrategy:
         if 'Close' not in data.columns:
             raise KeyError("'Close' column not found in data")
 
-        momentum_returns = (
-            data['Close']
-            .dropna(axis=1)
-            .pct_change(periods=len(data)-1)
-            .iloc[-1]
-            .nlargest(10)
-        )
-        return momentum_returns.index.tolist()
+        return (data['Close']
+                .dropna(axis=1)
+                .pct_change(periods=len(data)-1)
+                .iloc[-1]
+                .nlargest(10)
+                .index
+                .tolist())
 
     def close_positions(self, positions: List[str]) -> None:
         """Close specified positions.
@@ -97,14 +96,11 @@ class MomentumStrategy:
             logging.info("Current positions: %s", current_positions)
 
             # Determine positions to close and open
-            positions_to_close = [
-                ticker for ticker in current_positions
-                if ticker not in top_tickers
-            ]
-            positions_to_open = [
-                ticker for ticker in top_tickers
-                if ticker not in current_positions
-            ]
+            top_tickers_set = set(top_tickers)
+            current_positions_set = set(current_positions)
+
+            positions_to_close = list(current_positions_set - top_tickers_set)
+            positions_to_open = list(top_tickers_set - current_positions_set)
 
             logging.info("Positions to close: %s", positions_to_close)
             logging.info("Positions to open: %s", positions_to_open)
@@ -117,12 +113,8 @@ class MomentumStrategy:
             # Open new positions
             if positions_to_open:
                 account = self.trading_client.get_account()
-                available_cash = float(account.cash)
-                if available_cash <= 0:
-                    logging.warning(
-                        "Insufficient funds: $%.2f",
-                        available_cash
-                    )
+                if (available_cash := float(account.cash)) <= 0:
+                    logging.warning("Insufficient funds: $%.2f", available_cash)
                     return
 
                 position_size = available_cash / len(positions_to_open)

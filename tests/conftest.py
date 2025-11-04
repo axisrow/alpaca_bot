@@ -1,111 +1,78 @@
-"""Фикстуры для тестов."""
-from datetime import datetime
-from pathlib import Path
-from unittest.mock import MagicMock, Mock
-from typing import Dict, Any
-
 import pytest
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from datetime import datetime, timedelta
+import pandas as pd
 import pytz
+
+NY_TZ = pytz.timezone("America/New_York")
 
 
 @pytest.fixture
 def mock_trading_client():
-    """Мок TradingClient для тестов."""
+    """Mock Alpaca TradingClient with all necessary methods"""
     client = MagicMock()
 
-    # Мок для get_account
-    mock_account = Mock()
-    mock_account.cash = "10000.00"
-    mock_account.portfolio_value = "15000.00"
-    client.get_account.return_value = mock_account
+    # Mock clock for market status
+    clock_mock = MagicMock()
+    clock_mock.is_open = True
+    client.get_clock.return_value = clock_mock
 
-    # Мок для get_clock
-    mock_clock = Mock()
-    mock_clock.is_open = True
-    client.get_clock.return_value = mock_clock
+    # Mock account
+    account_mock = MagicMock()
+    account_mock.cash = 10000.0
+    account_mock.portfolio_value = 20000.0
+    client.get_account.return_value = account_mock
 
-    # Мок для get_all_positions
-    client.get_all_positions.return_value = []
+    # Mock positions
+    position_mock = MagicMock()
+    position_mock.symbol = "AAPL"
+    position_mock.qty = 10.0
+    position_mock.market_value = 1500.0
+    position_mock.unrealized_pl = 100.0
+    client.get_all_positions.return_value = [position_mock]
+
+    # Mock close_position
+    client.close_position.return_value = None
+
+    # Mock submit_order
+    order_mock = MagicMock()
+    order_mock.symbol = "AAPL"
+    order_mock.qty = 5
+    client.submit_order.return_value = order_mock
+
+    # Mock get_orders
+    client.get_orders.return_value = []
 
     return client
 
 
 @pytest.fixture
-def mock_position():
-    """Мок позиции для тестов."""
-    position = Mock()
-    position.symbol = "AAPL"
-    position.qty = "10.0"
-    position.market_value = "1500.00"
-    position.unrealized_pl = "50.00"
-    return position
-
-
-@pytest.fixture
-def sample_tickers():
-    """Пример списка тикеров для тестов."""
-    return ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA']
-
-
-@pytest.fixture
-def temp_flag_file(tmp_path: Path):
-    """Временный файл для флага ребалансировки."""
-    flag_path = tmp_path / "last_rebalance.txt"
-    return flag_path
-
-
-@pytest.fixture
-def ny_timezone():
-    """Временная зона Нью-Йорка."""
-    return pytz.timezone('America/New_York')
-
-
-@pytest.fixture
-def mock_yfinance_data():
-    """Мок данных yfinance."""
-    import pandas as pd
-    import numpy as np
-
-    # Создаем DataFrame с историческими данными
-    dates = pd.date_range(start='2023-01-01', end='2024-01-01', freq='D')
-    tickers = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META',
-               'NVDA', 'JPM', 'BAC', 'WMT', 'XOM', 'CVX']
-
-    # Генерируем случайные цены с разным momentum
-    data = {}
-    np.random.seed(42)
-    for ticker in tickers:
-        # Разный рост для разных акций
-        growth_rate = np.random.uniform(0.0001, 0.0005)
-        noise = np.random.normal(0, 0.01, len(dates))
-        prices = 100 * np.exp(growth_rate * np.arange(len(dates)) + noise)
-        data[ticker] = prices
-
-    df = pd.DataFrame(data, index=dates)
-
-    # Создаем MultiIndex колонки как в yfinance
-    df.columns = pd.MultiIndex.from_product([['Close'], df.columns])
-
+def mock_yfinance(monkeypatch):
+    """Mock yfinance download"""
+    df = pd.DataFrame({
+        "Close": [100 + i for i in range(250)]  # 250 trading days
+    })
+    monkeypatch.setattr("yfinance.download", MagicMock(return_value=df))
     return df
 
 
 @pytest.fixture
 def mock_telegram_message():
-    """Мок Telegram сообщения."""
-    message = Mock()
-    message.answer = Mock()
-    message.text = "Test message"
-    message.from_user = Mock()
-    message.from_user.id = 12345
+    """Mock Telegram Message object"""
+    message = AsyncMock()
+    message.answer = AsyncMock()
     return message
 
 
 @pytest.fixture
-def mock_telegram_callback():
-    """Мок Telegram callback query."""
-    callback = Mock()
-    callback.answer = Mock()
-    callback.message = Mock()
-    callback.message.answer = Mock()
-    callback.data = "test_callback"
-    return callback
+def mock_env_vars(monkeypatch):
+    """Mock environment variables"""
+    monkeypatch.setenv('ALPACA_API_KEY', 'test_key')
+    monkeypatch.setenv('ALPACA_SECRET_KEY', 'test_secret')
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', 'test_token')
+
+
+@pytest.fixture
+def current_ny_time():
+    """Fixture providing current NY time"""
+    return datetime.now(NY_TZ)

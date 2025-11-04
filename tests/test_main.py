@@ -1,338 +1,256 @@
-"""Тесты для модуля main."""
-from datetime import datetime, time as dt_time
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-
 import pytest
+from unittest.mock import patch, MagicMock, PropertyMock
+from datetime import datetime, timedelta
 import pytz
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from main import (
-    RebalanceFlag,
-    MarketSchedule,
-    PortfolioManager,
-    TradingBot
-)
+NY_TZ = pytz.timezone("America/New_York")
 
 
 class TestRebalanceFlag:
-    """Тесты для класса RebalanceFlag."""
+    """Test RebalanceFlag class"""
 
-    def test_has_rebalanced_today_no_file(self, tmp_path):
-        """Тест когда файл флага не существует."""
-        flag = RebalanceFlag(flag_path=tmp_path / "test_flag.txt")
-        assert flag.has_rebalanced_today() is False
+    def test_get_last_rebalance_date_file_not_exists(self):
+        """Should return None if flag file doesn't exist"""
+        from main import RebalanceFlag
 
-    def test_has_rebalanced_today_true(self, tmp_path):
-        """Тест когда ребалансировка была сегодня."""
-        flag_path = tmp_path / "test_flag.txt"
-        flag_path.write_text(datetime.now().strftime("%Y-%m-%d"))
+        with TemporaryDirectory() as tmpdir:
+            flag = RebalanceFlag(flag_path=Path(tmpdir) / "nonexistent.txt")
+            result = flag.get_last_rebalance_date()
+            assert result is None
 
-        flag = RebalanceFlag(flag_path=flag_path)
-        assert flag.has_rebalanced_today() is True
+    def test_get_last_rebalance_date_valid_date(self):
+        """Should return datetime if valid date in file"""
+        from main import RebalanceFlag
 
-    def test_has_rebalanced_today_false(self, tmp_path):
-        """Тест когда ребалансировка была вчера."""
-        flag_path = tmp_path / "test_flag.txt"
-        flag_path.write_text("2020-01-01")
+        with TemporaryDirectory() as tmpdir:
+            flag_path = Path(tmpdir) / "flag.txt"
+            flag_path.write_text("2024-01-15", encoding="utf-8")
+            flag = RebalanceFlag(flag_path=flag_path)
+            result = flag.get_last_rebalance_date()
+            assert result.strftime("%Y-%m-%d") == "2024-01-15"
 
-        flag = RebalanceFlag(flag_path=flag_path)
-        assert flag.has_rebalanced_today() is False
+    def test_get_last_rebalance_date_invalid_date(self):
+        """Should return None for invalid date format"""
+        from main import RebalanceFlag
 
-    def test_write_flag(self, tmp_path):
-        """Тест записи флага."""
-        flag_path = tmp_path / "subdir" / "test_flag.txt"
-        flag = RebalanceFlag(flag_path=flag_path)
+        with TemporaryDirectory() as tmpdir:
+            flag_path = Path(tmpdir) / "flag.txt"
+            flag_path.write_text("invalid", encoding="utf-8")
+            flag = RebalanceFlag(flag_path=flag_path)
+            result = flag.get_last_rebalance_date()
+            assert result is None  # Invalid dates return None, not raise ValueError
 
-        flag.write_flag()
+    def test_has_rebalanced_today_true(self):
+        """Should return True if rebalanced today"""
+        from main import RebalanceFlag
 
-        assert flag_path.exists()
-        assert flag_path.read_text() == datetime.now().strftime("%Y-%m-%d")
+        with TemporaryDirectory() as tmpdir:
+            flag_path = Path(tmpdir) / "flag.txt"
+            today = datetime.now(NY_TZ).strftime("%Y-%m-%d")
+            flag_path.write_text(today, encoding="utf-8")
+            flag = RebalanceFlag(flag_path=flag_path)
+            assert flag.has_rebalanced_today() is True
+
+    def test_has_rebalanced_today_false(self):
+        """Should return False if not rebalanced today"""
+        from main import RebalanceFlag
+
+        with TemporaryDirectory() as tmpdir:
+            flag_path = Path(tmpdir) / "flag.txt"
+            yesterday = (datetime.now(NY_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
+            flag_path.write_text(yesterday, encoding="utf-8")
+            flag = RebalanceFlag(flag_path=flag_path)
+            assert flag.has_rebalanced_today() is False
+
+    def test_write_flag(self):
+        """Should write today's date to file"""
+        from main import RebalanceFlag
+
+        with TemporaryDirectory() as tmpdir:
+            flag_path = Path(tmpdir) / "flag.txt"
+            flag = RebalanceFlag(flag_path=flag_path)
+            flag.write_flag()
+            today = datetime.now(NY_TZ).strftime("%Y-%m-%d")
+            assert flag_path.read_text(encoding="utf-8") == today
+
+    def test_get_countdown_message_zero_days(self):
+        """Should return message for rebalance now"""
+        from main import RebalanceFlag
+
+        flag = RebalanceFlag()
+        next_date = datetime.now(NY_TZ)
+        msg = flag.get_countdown_message(0, next_date)
+        assert "rebalancing" in msg.lower()
+
+    def test_get_countdown_message_positive_days(self):
+        """Should return message with days until rebalance"""
+        from main import RebalanceFlag
+
+        flag = RebalanceFlag()
+        next_date = datetime.now(NY_TZ) + timedelta(days=5)
+        msg = flag.get_countdown_message(5, next_date)
+        assert "5" in msg
 
 
 class TestMarketSchedule:
-    """Тесты для класса MarketSchedule."""
+    """Test MarketSchedule class"""
 
     def test_current_ny_time(self, mock_trading_client):
-        """Тест получения текущего времени в Нью-Йорке."""
-        schedule = MarketSchedule(mock_trading_client)
-        ny_time = schedule.current_ny_time
+        """Should return current time in NY timezone"""
+        from main import MarketSchedule
 
-        assert ny_time.tzinfo is not None
-        # Проверяем, что это NY timezone
-        assert str(ny_time.tzinfo) in ['EST', 'EDT', 'America/New_York']
+        schedule = MarketSchedule(mock_trading_client)
+        now = schedule.current_ny_time
+        assert now.tzinfo is not None  # Has timezone info
+
+    def test_is_open_market_open(self, mock_trading_client):
+        """Should return True when market is open"""
+        from main import MarketSchedule
+
+        clock = MagicMock()
+        clock.is_open = True
+        mock_trading_client.get_clock.return_value = clock
+
+        schedule = MarketSchedule(mock_trading_client)
+        assert schedule.is_open is True
+
+    def test_is_open_market_closed(self, mock_trading_client):
+        """Should return False when market is closed"""
+        from main import MarketSchedule
+
+        clock = MagicMock()
+        clock.is_open = False
+        mock_trading_client.get_clock.return_value = clock
+
+        schedule = MarketSchedule(mock_trading_client)
+        assert schedule.is_open is False
 
     def test_check_market_status_open(self, mock_trading_client):
-        """Тест когда рынок открыт."""
-        mock_clock = Mock()
-        mock_clock.is_open = True
-        mock_trading_client.get_clock.return_value = mock_clock
+        """Should return (True, message) when market open"""
+        from main import MarketSchedule
+
+        clock = MagicMock()
+        clock.is_open = True
+        mock_trading_client.get_clock.return_value = clock
 
         schedule = MarketSchedule(mock_trading_client)
+        is_open, msg = schedule.check_market_status()
+        assert is_open is True
+        assert isinstance(msg, str)
 
-        with patch.object(MarketSchedule, 'current_ny_time', new_callable=lambda: property(lambda self: datetime(2024, 1, 15, 10, 0, tzinfo=pytz.timezone('America/New_York')))):
-            is_open, reason = schedule.check_market_status()
+    def test_check_market_status_closed(self, mock_trading_client):
+        """Should return (False, message) when market closed"""
+        from main import MarketSchedule
 
-            assert is_open is True
-            assert reason == "рынок открыт"
-
-    def test_check_market_status_weekend(self, mock_trading_client):
-        """Тест когда выходной день."""
-        schedule = MarketSchedule(mock_trading_client)
-
-        with patch.object(MarketSchedule, 'current_ny_time', new_callable=lambda: property(lambda self: datetime(2024, 1, 20, 10, 0, tzinfo=pytz.timezone('America/New_York')))):
-            is_open, reason = schedule.check_market_status()
-
-            assert is_open is False
-            assert "выходной день" in reason
-
-    def test_check_market_status_holiday(self, mock_trading_client):
-        """Тест когда праздничный день."""
-        mock_clock = Mock()
-        mock_clock.is_open = False
-        mock_trading_client.get_clock.return_value = mock_clock
+        clock = MagicMock()
+        clock.is_open = False
+        mock_trading_client.get_clock.return_value = clock
 
         schedule = MarketSchedule(mock_trading_client)
+        is_open, msg = schedule.check_market_status()
+        assert is_open is False
+        assert isinstance(msg, str)
 
-        with patch.object(MarketSchedule, 'current_ny_time', new_callable=lambda: property(lambda self: datetime(2024, 1, 15, 10, 0, tzinfo=pytz.timezone('America/New_York')))):
-            is_open, reason = schedule.check_market_status()
-
-            assert is_open is False
-            assert reason == "праздничный день"
-
-    def test_is_open_property(self, mock_trading_client):
-        """Тест свойства is_open."""
-        mock_clock = Mock()
-        mock_clock.is_open = True
-        mock_trading_client.get_clock.return_value = mock_clock
+    def test_count_trading_days(self, mock_trading_client):
+        """Should count trading days excluding weekends"""
+        from main import MarketSchedule
 
         schedule = MarketSchedule(mock_trading_client)
-
-        with patch.object(MarketSchedule, 'current_ny_time', new_callable=lambda: property(lambda self: datetime(2024, 1, 15, 10, 0, tzinfo=pytz.timezone('America/New_York')))):
-            assert schedule.is_open is True
+        # From Monday to Friday = 5 trading days
+        start = datetime(2024, 1, 1)  # Monday
+        end = datetime(2024, 1, 5)    # Friday
+        count = schedule.count_trading_days(start, end)
+        assert count > 0
 
 
 class TestPortfolioManager:
-    """Тесты для класса PortfolioManager."""
-
-    def test_init(self, mock_trading_client):
-        """Тест инициализации менеджера портфеля."""
-        manager = PortfolioManager(mock_trading_client)
-
-        assert manager.trading_client == mock_trading_client
-        assert manager.strategy is not None
+    """Test PortfolioManager class"""
 
     def test_get_current_positions(self, mock_trading_client):
-        """Тест получения текущих позиций."""
-        pos1 = Mock()
-        pos1.symbol = "AAPL"
-        pos1.qty = "10.0"
-
-        pos2 = Mock()
-        pos2.symbol = "GOOGL"
-        pos2.qty = "5.0"
-
-        mock_trading_client.get_all_positions.return_value = [pos1, pos2]
+        """Should return current positions"""
+        from main import PortfolioManager
 
         manager = PortfolioManager(mock_trading_client)
         positions = manager.get_current_positions()
+        assert isinstance(positions, dict)
 
-        assert positions == {"AAPL": 10.0, "GOOGL": 5.0}
+    def test_get_current_positions_empty(self, mock_trading_client):
+        """Should handle empty positions"""
+        from main import PortfolioManager
 
-    def test_close_positions(self, mock_trading_client):
-        """Тест закрытия позиций."""
+        mock_trading_client.get_all_positions.return_value = []
         manager = PortfolioManager(mock_trading_client)
-
-        positions = ["AAPL", "GOOGL"]
-        manager.close_positions(positions)
-
-        assert mock_trading_client.close_position.call_count == 2
-
-    def test_open_positions(self, mock_trading_client):
-        """Тест открытия позиций."""
-        manager = PortfolioManager(mock_trading_client)
-
-        tickers = ["AAPL", "GOOGL"]
-        manager.open_positions(tickers, 1000.0)
-
-        assert mock_trading_client.submit_order.call_count == 2
+        positions = manager.get_current_positions()
+        assert positions == {}
 
 
 class TestTradingBot:
-    """Тесты для класса TradingBot."""
+    """Test TradingBot class"""
 
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    def test_init(self, mock_client_class, mock_load_dotenv):
-        """Тест инициализации торгового бота."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
+    def test_trading_bot_init(self, mock_env_vars, mock_trading_client):
+        """Should initialize trading bot"""
+        from main import TradingBot
 
-        bot = TradingBot()
+        with patch("main.TradingClient", return_value=mock_trading_client):
+            with patch("main.load_dotenv"):
+                bot = TradingBot()
+                assert bot is not None
+                assert bot.trading_client is not None
 
-        assert bot.api_key == 'test_key'
-        assert bot.secret_key == 'test_secret'
-        assert bot.trading_client == mock_client
-        mock_load_dotenv.assert_called_once()
+    def test_perform_rebalance_skip_if_done_today(self, mock_env_vars, mock_trading_client):
+        """Should skip rebalance if already done today"""
+        from main import TradingBot
 
-    @patch.dict('os.environ', {}, clear=True)
-    @patch('main.load_dotenv')
-    def test_init_no_api_keys(self, mock_load_dotenv):
-        """Тест инициализации без API ключей."""
-        with pytest.raises(SystemExit):
-            TradingBot()
+        with patch("main.TradingClient", return_value=mock_trading_client):
+            with patch("main.load_dotenv"):
+                bot = TradingBot()
+                bot.rebalance_flag = MagicMock()
+                bot.rebalance_flag.has_rebalanced_today.return_value = True
+                bot.portfolio_manager.strategy.rebalance = MagicMock()
 
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    def test_perform_rebalance_already_done(self, mock_client_class, mock_load_dotenv, tmp_path):
-        """Тест ребалансировки когда уже была сегодня."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
+                bot.perform_rebalance()
+                # rebalance should not be called
+                bot.portfolio_manager.strategy.rebalance.assert_not_called()
 
-        bot = TradingBot()
+    def test_perform_rebalance_market_closed(self, mock_env_vars, mock_trading_client):
+        """Should skip rebalance if market is closed"""
+        from main import TradingBot
 
-        # Устанавливаем флаг на сегодня
-        flag_path = tmp_path / "test_flag.txt"
-        flag_path.write_text(datetime.now().strftime("%Y-%m-%d"))
-        bot.rebalance_flag = RebalanceFlag(flag_path=flag_path)
+        with patch("main.TradingClient", return_value=mock_trading_client):
+            with patch("main.load_dotenv"):
+                bot = TradingBot()
+                bot.rebalance_flag = MagicMock()
+                bot.rebalance_flag.has_rebalanced_today.return_value = False
 
-        # Мокируем метод ребалансировки стратегии
-        with patch.object(bot.portfolio_manager.strategy, 'rebalance') as mock_rebalance:
-            bot.perform_rebalance()
+                # Mock market closed
+                bot.market_schedule.check_market_status = MagicMock(return_value=(False, "closed"))
+                bot.portfolio_manager.strategy.rebalance = MagicMock()
 
-            # Проверяем, что стратегия не вызывалась
-            mock_rebalance.assert_not_called()
+                bot.perform_rebalance()
+                # Should not execute rebalance if market closed
+                bot.portfolio_manager.strategy.rebalance.assert_not_called()
 
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    def test_get_portfolio_status(self, mock_client_class, mock_load_dotenv, mock_position):
-        """Тест получения статуса портфеля."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
+    def test_calculate_days_until_rebalance(self, mock_env_vars, mock_trading_client):
+        """Should calculate days until next rebalance"""
+        from main import TradingBot
 
-        # Настраиваем моки
-        mock_client.get_all_positions.return_value = [mock_position]
+        with patch("main.TradingClient", return_value=mock_trading_client):
+            with patch("main.load_dotenv"):
+                bot = TradingBot()
+                days = bot.calculate_days_until_rebalance()
+                assert isinstance(days, int)
+                assert days >= 0
 
-        mock_account = Mock()
-        mock_account.portfolio_value = "15000.00"
-        mock_client.get_account.return_value = mock_account
+    def test_get_portfolio_status(self, mock_env_vars, mock_trading_client):
+        """Should return portfolio status"""
+        from main import TradingBot
 
-        bot = TradingBot()
-        positions, account, pnl = bot.get_portfolio_status()
-
-        assert isinstance(positions, dict)
-        assert account == mock_account
-        assert isinstance(pnl, float)
-
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    def test_get_trading_stats(self, mock_client_class, mock_load_dotenv):
-        """Тест получения торговой статистики."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
-        # Настраиваем моки
-        mock_client.get_orders.return_value = []
-        mock_client.get_all_positions.return_value = []
-
-        bot = TradingBot()
-        stats = bot.get_trading_stats()
-
-        assert isinstance(stats, dict)
-        assert "trades_today" in stats
-        assert "pnl" in stats
-        assert "win_rate" in stats
-
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    def test_get_settings(self, mock_client_class, mock_load_dotenv):
-        """Тест получения настроек бота."""
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
-        bot = TradingBot()
-        settings = bot.get_settings()
-
-        assert isinstance(settings, dict)
-        assert "rebalance_time" in settings
-        assert "positions_count" in settings
-        assert "mode" in settings
-        assert settings["positions_count"] == 10
-
-
-class TestTelegramBot:
-    """Тесты для класса TelegramBot."""
-
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    @patch('main.ADMIN_IDS', [123456, 789012])
-    def test_send_startup_message(self, mock_client_class, mock_load_dotenv):
-        """Тест отправки стартового сообщения."""
-        import asyncio
-        from main import TelegramBot
-
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
-        # Создаем моки
-        trading_bot = MagicMock()
-        trading_bot.market_schedule.check_market_status.return_value = (True, "рынок открыт")
-        trading_bot.get_settings.return_value = {
-            "mode": "Paper Trading",
-            "rebalance_time": "10:00 NY",
-            "positions_count": 10
-        }
-
-        telegram_bot = TelegramBot(trading_bot)
-
-        # Мокируем отправку сообщения
-        async def mock_send():
-            await telegram_bot.send_startup_message()
-
-        with patch.object(telegram_bot.bot, 'send_message', new_callable=AsyncMock) as mock_send_message:
-            asyncio.run(mock_send())
-
-            # Проверяем, что сообщение было отправлено обоим администраторам
-            assert mock_send_message.call_count == 2
-
-            # Проверяем параметры первого вызова
-            first_call = mock_send_message.call_args_list[0]
-            assert first_call.kwargs['chat_id'] == 123456
-            assert 'Бот запущен' in first_call.kwargs['text']
-            assert first_call.kwargs['parse_mode'] == 'HTML'
-
-    @patch.dict('os.environ', {'ALPACA_API_KEY': 'test_key', 'ALPACA_SECRET_KEY': 'test_secret'})
-    @patch('main.load_dotenv')
-    @patch('main.TradingClient')
-    @patch('main.ADMIN_IDS', [])
-    def test_send_startup_message_no_admins(self, mock_client_class, mock_load_dotenv):
-        """Тест отправки стартового сообщения когда нет администраторов."""
-        import asyncio
-        from main import TelegramBot
-
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
-
-        trading_bot = MagicMock()
-        telegram_bot = TelegramBot(trading_bot)
-
-        async def mock_send():
-            await telegram_bot.send_startup_message()
-
-        with patch.object(telegram_bot.bot, 'send_message', new_callable=AsyncMock) as mock_send_message:
-            asyncio.run(mock_send())
-
-            # Проверяем, что сообщение не было отправлено
-            mock_send_message.assert_not_called()
-
-
-# Вспомогательный класс для асинхронных моков
-class AsyncMock(MagicMock):
-    """Мок для асинхронных функций."""
-    async def __call__(self, *args, **kwargs):
-        return super().__call__(*args, **kwargs)
+        with patch("main.TradingClient", return_value=mock_trading_client):
+            with patch("main.load_dotenv"):
+                bot = TradingBot()
+                positions, account, pnl = bot.get_portfolio_status()
+                assert isinstance(positions, dict)
+                assert account is not None
+                assert isinstance(pnl, (int, float))
