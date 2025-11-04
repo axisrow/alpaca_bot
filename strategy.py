@@ -8,7 +8,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
-from utils import retry_on_exception
+from utils import retry_on_exception, get_positions
 
 
 class MomentumStrategy:
@@ -43,16 +43,6 @@ class MomentumStrategy:
             .nlargest(10)
         )
         return momentum_returns.index.tolist()
-
-    @retry_on_exception()
-    def get_positions(self) -> Dict[str, float]:
-        """Get current positions.
-
-        Returns:
-            Dict[str, float]: Dictionary of current positions
-        """
-        positions = self.trading_client.get_all_positions()
-        return {pos.symbol: float(pos.qty) for pos in positions}
 
     def close_positions(self, positions: List[str]) -> None:
         """Close specified positions.
@@ -103,7 +93,7 @@ class MomentumStrategy:
             logging.info("Top 10 stocks by momentum: %s", ', '.join(top_tickers))
 
             # Get current positions
-            current_positions = self.get_positions()
+            current_positions = get_positions(self.trading_client)
             logging.info("Current positions: %s", current_positions)
 
             # Determine positions to close and open

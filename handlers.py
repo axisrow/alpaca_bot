@@ -5,6 +5,8 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
+from utils import telegram_handler
+
 
 def setup_router(trading_bot):
     """Setup router with access to TradingBot.
@@ -41,33 +43,16 @@ def setup_router(trading_bot):
         )
 
     @router.message(Command("check_rebalance"))
+    @telegram_handler("❌ Error retrieving rebalance information")
     async def cmd_check_rebalance(message: Message):
         """Handle /check_rebalance command."""
-        try:
-            days_until = trading_bot.calculate_days_until_rebalance()
+        days_until = trading_bot.calculate_days_until_rebalance()
+        next_date = trading_bot.get_next_rebalance_date()
+        msg = trading_bot.rebalance_flag.get_countdown_message(
+            days_until, next_date
+        )
 
-            if days_until == 0:
-                msg = (
-                    "⏰ <b>Rebalancing today!</b>\n\n"
-                    "🔄 Portfolio will be rebalanced to top 10 S&P 500 stocks\n"
-                    "⏱️ Rebalance time: 10:00 (NY)"
-                )
-            else:
-                next_rebalance_date = trading_bot.get_next_rebalance_date()
-                formatted_date = next_rebalance_date.strftime("%Y-%m-%d")
-                msg = (
-                    f"📊 <b>Rebalancing countdown</b>\n\n"
-                    f"📅 Days remaining: <b>{days_until}</b> trading days\n"
-                    f"📈 Strategy: Momentum Trading (S&P 500)\n"
-                    f"⏱️ Next rebalance: <b>{formatted_date}</b> at 10:00 AM (NY)"
-                )
-
-            await message.answer(msg, parse_mode="HTML")
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error checking days until rebalance: %s", exc)
-            await message.answer(
-                "❌ Error retrieving rebalance information"
-            )
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("info"))
     async def show_info(message: Message):
@@ -80,90 +65,77 @@ def setup_router(trading_bot):
         )
 
     @router.message(Command("portfolio"))
+    @telegram_handler("❌ Error retrieving portfolio data")
     async def show_portfolio(message: Message):
         """Handle /portfolio command."""
-        try:
-            # Get portfolio data from TradingBot
-            positions, account, account_pnl = trading_bot.get_portfolio_status()
+        # Get portfolio data from TradingBot
+        positions, account, account_pnl = trading_bot.get_portfolio_status()
 
-            # Verify account data was retrieved correctly
-            if not account:
-                raise ValueError("Failed to retrieve account data")
+        # Verify account data was retrieved correctly
+        if not account:
+            raise ValueError("Failed to retrieve account data")
 
-            # Build message
-            msg = "Portfolio Status:\n\n"
+        # Build message
+        msg = "Portfolio Status:\n\n"
 
-            if positions:
-                msg += "Positions:\n"
-                for symbol, qty in positions.items():
-                    # Get market value for position
-                    all_positions = trading_bot.trading_client.get_all_positions()
-                    position = next((p for p in all_positions
-                                     if p.symbol == symbol), None)
-                    if position:
-                        value = float(position.market_value)
-                        msg += (f"{symbol} – {float(qty):.2f} shares "
-                                f"(${value:.2f})\n")
-                    else:
-                        msg += (f"{symbol} – {float(qty):.2f} shares "
-                                f"(no price data)\n")
-            else:
-                msg += "Positions: No open positions\n"
+        if positions:
+            msg += "Positions:\n"
+            for symbol, qty in positions.items():
+                # Get market value for position
+                all_positions = trading_bot.trading_client.get_all_positions()
+                position = next((p for p in all_positions
+                                 if p.symbol == symbol), None)
+                if position:
+                    value = float(position.market_value)
+                    msg += (f"{symbol} – {float(qty):.2f} shares "
+                            f"(${value:.2f})\n")
+                else:
+                    msg += (f"{symbol} – {float(qty):.2f} shares "
+                            f"(no price data)\n")
+        else:
+            msg += "Positions: No open positions\n"
 
-            msg += "\nPortfolio:\n"
-            msg += f"Total: {float(account.portfolio_value):.2f}\n"
-            msg += f"\nP&L: ${account_pnl:.2f}"
+        msg += "\nPortfolio:\n"
+        msg += f"Total: {float(account.portfolio_value):.2f}\n"
+        msg += f"\nP&L: ${account_pnl:.2f}"
 
-            await message.answer(msg)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error retrieving portfolio data: %s", exc)
-            await message.answer(
-                "❌ Error retrieving portfolio data"
-            )
+        await message.answer(msg)
 
     @router.message(Command("stats"))
+    @telegram_handler("❌ Error retrieving trading statistics")
     async def show_stats(message: Message):
         """Handle /stats command."""
-        try:
-            # Get statistics from TradingBot
-            stats = trading_bot.get_trading_stats()
+        # Get statistics from TradingBot
+        stats = trading_bot.get_trading_stats()
 
-            # Verify statistics were retrieved
-            if not stats:
-                raise ValueError("Statistics unavailable")
+        # Verify statistics were retrieved
+        if not stats:
+            raise ValueError("Statistics unavailable")
 
-            msg = "Trading Statistics:\n"
-            msg += f"Trades today: {stats.get('trades_today', 0)}\n"
-            msg += f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
-            msg += f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
-            await message.answer(msg)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error retrieving trading statistics: %s", exc)
-            await message.answer(
-                "❌ Error retrieving trading statistics"
-            )
+        msg = "Trading Statistics:\n"
+        msg += f"Trades today: {stats.get('trades_today', 0)}\n"
+        msg += f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
+        msg += f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
+        await message.answer(msg)
 
     @router.message(Command("settings"))
+    @telegram_handler("❌ Error retrieving settings")
     async def show_settings(message: Message):
         """Handle /settings command."""
-        try:
-            # Get settings from TradingBot
-            settings = trading_bot.get_settings()
+        # Get settings from TradingBot
+        settings = trading_bot.get_settings()
 
-            # Verify settings were retrieved
-            if not settings:
-                raise ValueError("Settings unavailable")
+        # Verify settings were retrieved
+        if not settings:
+            raise ValueError("Settings unavailable")
 
-            msg = "Bot Settings:\n"
-            msg += (f"- Rebalance time: "
-                    f"{settings.get('rebalance_time', 'not set')}\n")
-            msg += (f"- Number of positions: "
-                    f"{settings.get('positions_count', 0)}\n")
-            msg += f"- Mode: {settings.get('mode', 'not set')}"
-            await message.answer(msg)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error retrieving settings: %s", exc)
-            await message.answer("❌ Error retrieving settings")
+        msg = "Bot Settings:\n"
+        msg += (f"- Rebalance time: "
+                f"{settings.get('rebalance_time', 'not set')}\n")
+        msg += (f"- Number of positions: "
+                f"{settings.get('positions_count', 0)}\n")
+        msg += f"- Mode: {settings.get('mode', 'not set')}"
+        await message.answer(msg)
 
     @router.message()
     async def echo(message: Message):

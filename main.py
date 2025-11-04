@@ -5,7 +5,7 @@ import os
 import signal
 import sys
 from dataclasses import dataclass
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from config import snp500_tickers, TELEGRAM_BOT_TOKEN, ADMIN_IDS
 from handlers import setup_router
 from strategy import MomentumStrategy
-from utils import retry_on_exception
+from utils import retry_on_exception, get_positions
 
 # Configure logging
 logging.basicConfig(
@@ -33,13 +33,15 @@ logging.basicConfig(
     ]
 )
 
+# New York timezone constant
+NY_TIMEZONE = pytz.timezone('America/New_York')
+
 
 @dataclass
 class RebalanceFlag:
     """Class for managing rebalance flag."""
 
     flag_path: Path = Path("data/last_rebalance.txt")
-    ny_timezone = pytz.timezone('America/New_York')
 
     def get_last_rebalance_date(self) -> datetime | None:
         """Get the date of last rebalance.
@@ -51,7 +53,7 @@ class RebalanceFlag:
             return None
         try:
             date_str = self.flag_path.read_text(encoding='utf-8').strip()
-            return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=self.ny_timezone)
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=NY_TIMEZONE)
         except ValueError:
             logging.error("Invalid date format in rebalance file")
             return None
@@ -60,20 +62,47 @@ class RebalanceFlag:
         """Check if rebalancing has occurred today."""
         if not self.flag_path.exists():
             return False
-        today_ny = datetime.now(self.ny_timezone).strftime("%Y-%m-%d")
+        today_ny = datetime.now(NY_TIMEZONE).strftime("%Y-%m-%d")
         return self.flag_path.read_text(encoding='utf-8').strip() == today_ny
 
     def write_flag(self) -> None:
         """Write rebalance flag."""
         self.flag_path.parent.mkdir(parents=True, exist_ok=True)
-        today_ny = datetime.now(self.ny_timezone).strftime("%Y-%m-%d")
+        today_ny = datetime.now(NY_TIMEZONE).strftime("%Y-%m-%d")
         self.flag_path.write_text(today_ny, encoding='utf-8')
+
+    def get_countdown_message(self, days_until: int,
+                              next_date: datetime) -> str:
+        """Get formatted countdown message for rebalancing.
+
+        Args:
+            days_until: Number of trading days until rebalancing
+            next_date: Next rebalance date
+
+        Returns:
+            str: Formatted HTML message
+        """
+        now_ny = datetime.now(NY_TIMEZONE)
+
+        if days_until == 0:
+            return (
+                "⏰ <b>Rebalancing today!</b>\n\n"
+                f"🕐 Time (NY): {now_ny.strftime('%H:%M:%S')}\n"
+                "🔄 Portfolio will be rebalanced to top 10 S&P 500 stocks\n"
+            )
+
+        formatted_date = next_date.strftime("%Y-%m-%d")
+        return (
+            f"📊 <b>Rebalancing countdown</b>\n\n"
+            f"📅 Days remaining: <b>{days_until}</b> trading days\n"
+            f"⏱️ Next rebalance: <b>{formatted_date}</b> at 10:00 AM (NY)\n"
+            f"🕐 Current time (NY): {now_ny.strftime('%H:%M:%S')}\n"
+        )
 
 
 class MarketSchedule:
     """Class for managing market schedule."""
 
-    NY_TIMEZONE = pytz.timezone('America/New_York')
     MARKET_OPEN = dt_time(9, 30)
     MARKET_CLOSE = dt_time(16, 0)
 
@@ -88,7 +117,7 @@ class MarketSchedule:
     @property
     def current_ny_time(self) -> datetime:
         """Current time in New York."""
-        return datetime.now(self.NY_TIMEZONE)
+        return datetime.now(NY_TIMEZONE)
 
     def check_market_status(self) -> Tuple[bool, str]:
         """Check market status.
@@ -134,13 +163,11 @@ class MarketSchedule:
         Returns:
             int: Number of trading days (weekdays only)
         """
-        from datetime import timedelta
-
         # Add NY timezone if dates don't have one
         if start_date.tzinfo is None:
-            start_date = self.NY_TIMEZONE.localize(start_date)
+            start_date = NY_TIMEZONE.localize(start_date)
         if end_date.tzinfo is None:
-            end_date = self.NY_TIMEZONE.localize(end_date)
+            end_date = NY_TIMEZONE.localize(end_date)
 
         trading_days = 0
         current = start_date.date()
@@ -167,15 +194,13 @@ class PortfolioManager:
         self.trading_client = trading_client
         self.strategy = MomentumStrategy(self.trading_client, snp500_tickers)
 
-    @retry_on_exception()
     def get_current_positions(self) -> Dict[str, float]:
         """Get current positions.
 
         Returns:
             Dict[str, float]: Dictionary of positions {ticker: quantity}
         """
-        positions = self.trading_client.get_all_positions()
-        return {pos.symbol: float(pos.qty) for pos in positions}  # type: ignore[attr-defined]
+        return get_positions(self.trading_client)
 
 
 class TradingBot:
@@ -252,7 +277,7 @@ class TradingBot:
         """Start the bot."""
         logging.info("=== Starting trading bot ===")
         is_open, reason = self.market_schedule.check_market_status()
-        now_ny = datetime.now(MarketSchedule.NY_TIMEZONE)
+        now_ny = datetime.now(NY_TIMEZONE)
         logging.info(
             "Current time (NY): %s",
             now_ny.strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -267,7 +292,7 @@ class TradingBot:
                 day_of_week='mon-fri',
                 hour=10,
                 minute=0,
-                timezone=MarketSchedule.NY_TIMEZONE
+                timezone=NY_TIMEZONE
             )
             # Add task for daily countdown
             if self.telegram_bot:
@@ -277,7 +302,7 @@ class TradingBot:
                     day_of_week='mon-fri',
                     hour=10,
                     minute=0,
-                    timezone=MarketSchedule.NY_TIMEZONE
+                    timezone=NY_TIMEZONE
                 )
                 logging.info("Countdown task added to schedule")
             self.scheduler.start()
@@ -321,7 +346,7 @@ class TradingBot:
         """
         try:
             # Get all trades for today
-            today = datetime.now(MarketSchedule.NY_TIMEZONE).replace(
+            today = datetime.now(NY_TIMEZONE).replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
 
@@ -370,7 +395,7 @@ class TradingBot:
         if last_date is None:
             return 0  # Time to rebalance if never done before
 
-        today = datetime.now(MarketSchedule.NY_TIMEZONE)
+        today = datetime.now(NY_TIMEZONE)
         trading_days_passed = self.market_schedule.count_trading_days(last_date, today)
 
         return max(0, REBALANCE_INTERVAL_DAYS - trading_days_passed)
@@ -382,12 +407,11 @@ class TradingBot:
             datetime: Next rebalance date in NY timezone
         """
         from config import REBALANCE_INTERVAL_DAYS
-        from datetime import timedelta
 
         last_date = self.rebalance_flag.get_last_rebalance_date()
         if last_date is None:
             # If never rebalanced, next rebalance is today
-            return datetime.now(MarketSchedule.NY_TIMEZONE)
+            return datetime.now(NY_TIMEZONE)
 
         # Start from the last rebalance date and count forward 22 trading days
         current = last_date.date()
@@ -400,7 +424,7 @@ class TradingBot:
                 trading_days_counted += 1
 
         # Return the date as datetime object in NY timezone
-        return MarketSchedule.NY_TIMEZONE.localize(
+        return NY_TIMEZONE.localize(
             datetime.combine(current, dt_time(10, 0))
         )
 
@@ -432,6 +456,27 @@ class TelegramBot:
         """Setup command handlers."""
         self.dp.include_router(self.router)
 
+    async def _send_to_admins(self, message: str) -> None:
+        """Send message to all admin IDs.
+
+        Args:
+            message: Message text to send
+        """
+        for admin_id in ADMIN_IDS:
+            try:
+                await self.bot.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+                logging.info("Message sent to admin %s", admin_id)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error(
+                    "Error sending message to admin %s: %s",
+                    admin_id,
+                    exc
+                )
+
     async def send_startup_message(self) -> None:
         """Send startup message to admins."""
         if not ADMIN_IDS:
@@ -439,7 +484,7 @@ class TelegramBot:
             return
 
         # Get bot state information
-        now_ny = datetime.now(MarketSchedule.NY_TIMEZONE)
+        now_ny = datetime.now(NY_TIMEZONE)
         is_open, reason = self.trading_bot.market_schedule.check_market_status()
 
         message = (
@@ -457,21 +502,7 @@ class TelegramBot:
             f"📈 Positions: {self.trading_bot.get_settings()['positions_count']}\n"
         )
 
-        # Send message to each admin
-        for admin_id in ADMIN_IDS:
-            try:
-                await self.bot.send_message(
-                    chat_id=admin_id,
-                    text=message,
-                    parse_mode="HTML"
-                )
-                logging.info("Startup message sent to admin %s", admin_id)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error(
-                    "Error sending message to admin %s: %s",
-                    admin_id,
-                    exc
-                )
+        await self._send_to_admins(message)
 
     async def send_daily_countdown(self) -> None:
         """Send daily countdown to rebalancing to admins."""
@@ -480,45 +511,17 @@ class TelegramBot:
             return
 
         days_until = self.trading_bot.calculate_days_until_rebalance()
-        now_ny = datetime.now(MarketSchedule.NY_TIMEZONE)
+        next_date = self.trading_bot.get_next_rebalance_date()
+        message = self.trading_bot.rebalance_flag.get_countdown_message(
+            days_until, next_date
+        )
 
-        if days_until == 0:
-            message = (
-                "⏰ <b>Rebalancing today!</b>\n\n"
-                f"🕐 Time (NY): {now_ny.strftime('%H:%M:%S')}\n"
-                "🔄 Portfolio will be rebalanced to top 10 S&P 500 stocks\n"
-            )
-        else:
-            next_rebalance_date = self.trading_bot.get_next_rebalance_date()
-            formatted_date = next_rebalance_date.strftime("%Y-%m-%d")
-            message = (
-                f"📊 <b>Rebalancing countdown</b>\n\n"
-                f"📅 Days remaining: <b>{days_until}</b> trading days\n"
-                f"⏱️ Next rebalance: <b>{formatted_date}</b> at 10:00 AM (NY)\n"
-                f"🕐 Current time (NY): {now_ny.strftime('%H:%M:%S')}\n"
-            )
-
-        # Send message to each admin
-        for admin_id in ADMIN_IDS:
-            try:
-                await self.bot.send_message(
-                    chat_id=admin_id,
-                    text=message,
-                    parse_mode="HTML"
-                )
-                logging.info("Countdown message sent to admin %s", admin_id)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error(
-                    "Error sending countdown message to admin %s: %s",
-                    admin_id,
-                    exc
-                )
+        await self._send_to_admins(message)
 
     def send_daily_countdown_sync(self) -> None:
         """Sync wrapper for sending countdown (for scheduler)."""
         try:
             # Get running event loop or create new one
-            import asyncio
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
