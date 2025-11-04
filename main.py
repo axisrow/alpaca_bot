@@ -512,6 +512,11 @@ class TelegramBot:
         await self.bot.set_my_commands([
             BotCommand(command="start", description="Начать работу"),
             BotCommand(command="help", description="Помощь"),
+            BotCommand(command="info", description="Информация о боте"),
+            BotCommand(command="portfolio", description="Состояние портфеля"),
+            BotCommand(command="stats", description="Торговая статистика"),
+            BotCommand(command="settings", description="Настройки бота"),
+            BotCommand(command="check_rebalance", description="Дни до ребалансировки"),
         ])
         await self.dp.start_polling(self.bot)
 

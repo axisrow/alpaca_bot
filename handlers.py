@@ -3,9 +3,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
-
-from keyboards import main_kb, menu_kb
+from aiogram.types import Message, ReplyKeyboardRemove
 
 
 def setup_router(trading_bot):
@@ -24,8 +22,8 @@ def setup_router(trading_bot):
         """Обработчик команды /start."""
         await message.answer(
             "Привет! Я ваш торговый бот-помощник.\n"
-            "Используйте меню для управления торговлей.",
-            reply_markup=main_kb
+            "Введите /help для списка доступных команд.",
+            reply_markup=ReplyKeyboardRemove()
         )
 
     @router.message(Command("help"))
@@ -34,24 +32,44 @@ def setup_router(trading_bot):
         await message.answer(
             "Список доступных команд:\n"
             "/start - Начать работу\n"
-            "/help - Показать помощь\n\n"
-            "Через меню доступны функции:\n"
-            "📊 Портфель - просмотр текущих позиций\n"
-            "📈 Статистика - просмотр торговой статистики\n"
-            "⚙️ Настройки - настройка параметров бота"
+            "/help - Показать помощь\n"
+            "/check_rebalance - Проверить дни до ребалансировки\n"
+            "/info - Информация о боте\n"
+            "/portfolio - Состояние портфеля\n"
+            "/stats - Торговая статистика\n"
+            "/settings - Настройки бота"
         )
 
-    @router.message(F.text == "📋 Меню")
-    async def show_menu(message: Message):
-        """Обработчик кнопки 'Меню'."""
-        await message.answer(
-            "Выберите действие:",
-            reply_markup=menu_kb
-        )
+    @router.message(Command("check_rebalance"))
+    async def cmd_check_rebalance(message: Message):
+        """Обработчик команды /check_rebalance."""
+        try:
+            days_until = trading_bot.calculate_days_until_rebalance()
 
-    @router.message(F.text == "ℹ️ Информация")
+            if days_until == 0:
+                msg = (
+                    "⏰ <b>Ребалансировка сегодня!</b>\n\n"
+                    "🔄 Портфель будет переформирован на лучшие 10 акций S&P 500\n"
+                    "⏱️ Время ребалансировки: 10:00 (NY)"
+                )
+            else:
+                msg = (
+                    f"📊 <b>Countdown до ребалансировки</b>\n\n"
+                    f"📅 Осталось: <b>{days_until}</b> торговых дней\n"
+                    f"📈 Стратегия: Momentum Trading (S&P 500)\n"
+                    f"⏱️ Следующая ребалансировка: в течение {days_until} торговых дней"
+                )
+
+            await message.answer(msg, parse_mode="HTML")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Ошибка при проверке дней до ребалансировки: %s", exc)
+            await message.answer(
+                "❌ Ошибка при получении информации о ребалансировке"
+            )
+
+    @router.message(Command("info"))
     async def show_info(message: Message):
-        """Обработчик кнопки 'Информация'."""
+        """Обработчик команды /info."""
         await message.answer(
             "Торговый бот для автоматической торговли на бирже.\n"
             "Стратегия: Momentum Trading\n"
@@ -59,10 +77,9 @@ def setup_router(trading_bot):
             "Используется API Alpaca Markets"
         )
 
-    @router.callback_query(F.data == "portfolio_status")
-    async def show_portfolio(callback: CallbackQuery):
-        """Обработчик кнопки 'Портфель'."""
-        await callback.answer()
+    @router.message(Command("portfolio"))
+    async def show_portfolio(message: Message):
+        """Обработчик команды /portfolio."""
         try:
             # Получаем данные о портфеле из TradingBot
             positions, account, account_pnl = trading_bot.get_portfolio_status()
@@ -95,17 +112,16 @@ def setup_router(trading_bot):
             msg += f"Итого: {float(account.portfolio_value):.2f}\n"
             msg += f"\nP&L: ${account_pnl:.2f}"
 
-            await callback.message.answer(msg)
+            await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Ошибка при получении данных портфеля: %s", exc)
-            await callback.message.answer(
+            await message.answer(
                 "❌ Ошибка при получении данных портфеля"
             )
 
-    @router.callback_query(F.data == "trading_stats")
-    async def show_stats(callback: CallbackQuery):
-        """Обработчик кнопки 'Статистика'."""
-        await callback.answer()
+    @router.message(Command("stats"))
+    async def show_stats(message: Message):
+        """Обработчик команды /stats."""
         try:
             # Получаем статистику из TradingBot
             stats = trading_bot.get_trading_stats()
@@ -118,17 +134,16 @@ def setup_router(trading_bot):
             msg += f"Сделок за сегодня: {stats.get('trades_today', 0)}\n"
             msg += f"Прибыль/убыток: ${stats.get('pnl', 0.0):.2f}\n"
             msg += f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
-            await callback.message.answer(msg)
+            await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Ошибка при получении торговой статистики: %s", exc)
-            await callback.message.answer(
+            await message.answer(
                 "❌ Ошибка при получении торговой статистики"
             )
 
-    @router.callback_query(F.data == "settings")
-    async def show_settings(callback: CallbackQuery):
-        """Обработчик кнопки 'Настройки'."""
-        await callback.answer()
+    @router.message(Command("settings"))
+    async def show_settings(message: Message):
+        """Обработчик команды /settings."""
         try:
             # Получаем настройки из TradingBot
             settings = trading_bot.get_settings()
@@ -143,10 +158,10 @@ def setup_router(trading_bot):
             msg += (f"- Количество позиций: "
                     f"{settings.get('positions_count', 0)}\n")
             msg += f"- Режим: {settings.get('mode', 'не задан')}"
-            await callback.message.answer(msg)
+            await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Ошибка при получении настроек: %s", exc)
-            await callback.message.answer("❌ Ошибка при получении настроек")
+            await message.answer("❌ Ошибка при получении настроек")
 
     @router.message()
     async def echo(message: Message):
