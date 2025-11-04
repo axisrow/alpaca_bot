@@ -1,8 +1,9 @@
 """Module with trading strategies."""
 import logging
 import time
-from typing import Dict, List
+from typing import List, cast
 
+import pandas as pd
 import yfinance as yf
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
@@ -31,15 +32,18 @@ class MomentumStrategy:
         Returns:
             List[str]: List of tickers with highest momentum
         """
-        data = yf.download(self.tickers, period="1y", timeout=30)
-        if 'Close' not in data.columns:
+        data = yf.download(self.tickers, period="1y", timeout=30)  # type: ignore[no-untyped-call]
+        if data is None:
+            raise KeyError("'Close' column not found in data")
+        if data.empty or 'Close' not in data.columns:  # type: ignore[union-attr]
             raise KeyError("'Close' column not found in data")
 
-        return (data['Close']
-                .dropna(axis=1)
-                .pct_change(periods=len(data)-1)
-                .iloc[-1]
-                .nlargest(10)
+        data = cast(pd.DataFrame, data)  # type: ignore[assignment]
+        return (data['Close']  # type: ignore[index]
+                .dropna(axis='columns')  # type: ignore[call-overload]
+                .pct_change(periods=len(data)-1)  # type: ignore[no-untyped-call]
+                .iloc[-1]  # type: ignore[attr-defined]
+                .nlargest(10)  # type: ignore[attr-defined]
                 .index
                 .tolist())
 
@@ -112,8 +116,10 @@ class MomentumStrategy:
 
             # Open new positions
             if positions_to_open:
-                account = self.trading_client.get_account()
-                if (available_cash := float(account.cash)) <= 0:
+                account = self.trading_client.get_account()  # type: ignore[no-untyped-call]
+                cash_value = getattr(account, 'cash', 0.0)  # type: ignore[attr-defined]
+                available_cash = float(cast(float, cash_value))  # type: ignore[arg-type]
+                if available_cash <= 0:
                     logging.warning("Insufficient funds: $%.2f", available_cash)
                     return
 

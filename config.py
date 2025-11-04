@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Environment (dev, local, prod)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+
 # Telegram bot token
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_BOT_TOKEN:

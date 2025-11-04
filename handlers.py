@@ -1,7 +1,7 @@
 """Module with Telegram bot command handlers."""
 import logging
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
@@ -36,6 +36,7 @@ def setup_router(trading_bot):
             "/start - Start\n"
             "/help - Show help\n"
             "/check_rebalance - Days until rebalancing\n"
+            "/test_rebalance - Test rebalance (dry run)\n"
             "/info - Bot information\n"
             "/portfolio - Portfolio status\n"
             "/stats - Trading statistics\n"
@@ -51,6 +52,71 @@ def setup_router(trading_bot):
         msg = trading_bot.rebalance_flag.get_countdown_message(
             days_until, next_date
         )
+
+        await message.answer(msg, parse_mode="HTML")
+
+    @router.message(Command("test_rebalance"))
+    @telegram_handler("❌ Error running test rebalance")
+    async def cmd_test_rebalance(message: Message):
+        """Handle /test_rebalance command (dry run)."""
+        preview = trading_bot.get_rebalance_preview()
+
+        # Check for errors in preview
+        if "error" in preview:
+            raise ValueError(f"Rebalance preview error: {preview['error']}")
+
+        # Build response message
+        current_positions = preview.get("current_positions", {})
+        positions_dict = preview.get("positions_dict", {})
+        top_tickers = preview.get("top_tickers", [])
+        positions_to_close = preview.get("positions_to_close", [])
+        positions_to_open = preview.get("positions_to_open", [])
+        available_cash = preview.get("available_cash", 0.0)
+        position_size = preview.get("position_size", 0.0)
+
+        msg = "📊 <b>Rebalance Preview (DRY RUN)</b>\n\n"
+
+        # Current positions
+        msg += "<b>📍 Current Positions:</b>\n"
+        if current_positions:
+            for symbol, qty in current_positions.items():
+                pos_info = positions_dict.get(symbol)
+                if pos_info:
+                    market_value = float(getattr(pos_info, 'market_value', 0))
+                    msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
+                else:
+                    msg += f"  {symbol}: {float(qty):.2f} shares\n"
+        else:
+            msg += "  No open positions\n"
+
+        msg += "\n<b>🎯 Top 10 by Momentum:</b>\n"
+        for i, ticker in enumerate(top_tickers, 1):
+            msg += f"  {i}. {ticker}\n"
+
+        msg += "\n<b>📉 Positions to Close:</b>\n"
+        if positions_to_close:
+            for symbol in positions_to_close:
+                pos_info = positions_dict.get(symbol)
+                if pos_info:
+                    market_value = float(getattr(pos_info, 'market_value', 0))
+                    msg += f"  ❌ {symbol} (${market_value:.2f})\n"
+                else:
+                    msg += f"  ❌ {symbol}\n"
+        else:
+            msg += "  None\n"
+
+        msg += "\n<b>📈 Positions to Open:</b>\n"
+        if positions_to_open:
+            for symbol in positions_to_open:
+                msg += f"  ✅ {symbol} (${position_size:.2f})\n"
+        else:
+            msg += "  None\n"
+
+        msg += "\n<b>💰 Summary:</b>\n"
+        msg += f"  Available cash: ${available_cash:.2f}\n"
+        msg += f"  Position size: ${position_size:.2f}\n"
+        msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
+        msg += "\n⚠️ <i>This is a DRY RUN - no trades executed</i>"
 
         await message.answer(msg, parse_mode="HTML")
 
@@ -137,6 +203,35 @@ def setup_router(trading_bot):
             f"- Mode: {settings.get('mode', 'not set')}"
         )
         await message.answer(msg)
+
+    @router.message(F.text.lower().in_(["да", "yes", "y"]))
+    @telegram_handler("❌ Error approving rebalance")
+    async def approve_rebalance(message: Message):
+        """Handle rebalance approval."""
+        if not trading_bot.awaiting_rebalance_confirmation:
+            await message.answer("❌ No pending rebalance request")
+            return
+
+        await message.answer("✅ Rebalance approved. Executing...")
+
+        # Execute rebalance
+        logging.info("Executing rebalance (approved by admin)")
+        trading_bot.execute_rebalance()
+        trading_bot.awaiting_rebalance_confirmation = False
+
+        await message.answer("✅ Portfolio rebalancing completed successfully")
+
+    @router.message(F.text.lower().in_(["нет", "no", "n"]))
+    @telegram_handler("❌ Error rejecting rebalance")
+    async def reject_rebalance(message: Message):
+        """Handle rebalance rejection."""
+        if not trading_bot.awaiting_rebalance_confirmation:
+            await message.answer("❌ No pending rebalance request")
+            return
+
+        await message.answer("❌ Rebalance rejected")
+        logging.info("Rebalance rejected by admin")
+        trading_bot.awaiting_rebalance_confirmation = False
 
     @router.message()
     async def echo(message: Message):

@@ -13,15 +13,15 @@ import pytz
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, QueryOrderStatus
-from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import QueryOrderStatus
+from alpaca.trading.requests import GetOrdersRequest
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from config import snp500_tickers, TELEGRAM_BOT_TOKEN, ADMIN_IDS
+from config import snp500_tickers, TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT
 from handlers import setup_router
 from strategy import MomentumStrategy
-from utils import retry_on_exception, get_positions
+from utils import get_positions
 
 # Configure logging
 logging.basicConfig(
@@ -169,7 +169,7 @@ class MarketSchedule:
         start, end = start_date.date(), end_date.date()
         return sum(
             1 for day_offset in range(1, (end - start).days + 1)
-            if (current_day := start + timedelta(days=day_offset)).weekday() < 5
+            if (start + timedelta(days=day_offset)).weekday() < 5
         )
 
 
@@ -206,8 +206,9 @@ class TradingBot:
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
         self.telegram_bot = None  # Will be set after TelegramBot creation
+        self.awaiting_rebalance_confirmation = False  # Flag for pending confirmation
 
-    def set_telegram_bot(self, telegram_bot: object) -> None:
+    def set_telegram_bot(self, telegram_bot: 'TelegramBot') -> None:
         """Set reference to Telegram bot for notifications.
 
         Args:
@@ -239,30 +240,67 @@ class TradingBot:
             url_override=self.base_url
         )
 
-    def perform_rebalance(self) -> None:
-        """Perform portfolio rebalancing."""
-        from config import REBALANCE_INTERVAL_DAYS
+    def _check_rebalance_conditions(self) -> bool:
+        """Check if rebalance conditions are met.
 
+        Returns:
+            bool: True if all conditions are met, False otherwise
+        """
         if self.rebalance_flag.has_rebalanced_today():
             logging.info("Rebalancing already performed today.")
-            return
+            return False
 
         is_open, reason = self.market_schedule.check_market_status()
         if not is_open:
             logging.info("Rebalancing postponed: %s", reason)
-            return
+            return False
 
         # Check if 22 trading days have passed since last rebalance
         days_until = self.calculate_days_until_rebalance()
         if days_until > 0:
             logging.info("Rebalancing not required. Days remaining: %d", days_until)
-            return
+            return False
 
-        # Call rebalancing through strategy
+        return True
+
+    def execute_rebalance(self) -> None:
+        """Execute portfolio rebalancing."""
         logging.info("Performing portfolio rebalancing...")
         self.portfolio_manager.strategy.rebalance()
         self.rebalance_flag.write_flag()
         logging.info("Rebalancing completed.")
+
+    def request_rebalance_confirmation_sync(self) -> None:
+        """Request rebalance confirmation from admins (sync wrapper)."""
+        if not self.telegram_bot:
+            logging.warning("Telegram bot not available, executing rebalance directly")
+            self.execute_rebalance()
+            return
+
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.run_coroutine_threadsafe(
+                    self.telegram_bot.send_rebalance_request(), loop
+                ).result(timeout=30)
+            except RuntimeError:
+                asyncio.run(self.telegram_bot.send_rebalance_request())
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Error requesting rebalance confirmation: %s", exc)
+            # Fallback: execute rebalance anyway
+            logging.info("Executing rebalance as fallback")
+            self.execute_rebalance()
+
+    def perform_rebalance(self) -> None:
+        """Perform portfolio rebalancing."""
+        if not self._check_rebalance_conditions():
+            return
+
+        # In local environment, request confirmation; otherwise execute directly
+        if ENVIRONMENT == "local":
+            self.request_rebalance_confirmation_sync()
+        else:
+            self.execute_rebalance()
 
     def start(self) -> None:
         """Start the bot."""
@@ -414,6 +452,57 @@ class TradingBot:
 
         return NY_TIMEZONE.localize(datetime.combine(next_date, dt_time(10, 0)))
 
+    def get_rebalance_preview(self) -> Dict[str, object]:
+        """Get a preview of what would happen in rebalancing (dry-run).
+
+        Returns:
+            Dict[str, object]: Rebalance plan with current and planned positions
+        """
+        try:
+            # Get current positions
+            current_positions = self.portfolio_manager.get_current_positions()
+            all_positions = self.trading_client.get_all_positions()
+            positions_dict = {p.symbol: p for p in all_positions}  # type: ignore
+
+            # Get account data
+            account = self.trading_client.get_account()
+            available_cash = float(getattr(account, 'cash', 0))
+
+            # Get top 10 by momentum
+            top_tickers = self.portfolio_manager.strategy.get_signals()
+
+            # Calculate what would change
+            positions_to_close = list(set(current_positions.keys()) - set(top_tickers))
+            positions_to_open = list(set(top_tickers) - set(current_positions.keys()))
+
+            # Calculate position size
+            position_size = 0.0
+            if positions_to_open and available_cash > 0:
+                position_size = available_cash / len(positions_to_open)
+
+            # Build response
+            return {
+                "current_positions": current_positions,
+                "positions_dict": positions_dict,
+                "top_tickers": top_tickers,
+                "positions_to_close": positions_to_close,
+                "positions_to_open": positions_to_open,
+                "available_cash": available_cash,
+                "position_size": position_size
+            }
+
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Error previewing rebalance: %s", exc)
+            return {
+                "error": str(exc),
+                "current_positions": {},
+                "top_tickers": [],
+                "positions_to_close": [],
+                "positions_to_open": [],
+                "available_cash": 0.0,
+                "position_size": 0.0
+            }
+
 
 class TelegramBot:
     """Class for Telegram bot."""
@@ -516,6 +605,81 @@ class TelegramBot:
                 asyncio.run(self.send_daily_countdown())
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error sending countdown: %s", exc)
+
+    async def send_rebalance_request(self) -> None:
+        """Send rebalance request with preview and ask for confirmation."""
+        if not ADMIN_IDS:
+            logging.info("Admin list is empty, sending rebalance request to no one")
+            return
+
+        # Set flag indicating we're waiting for confirmation
+        self.trading_bot.awaiting_rebalance_confirmation = True
+
+        # Get rebalance preview
+        preview = self.trading_bot.get_rebalance_preview()
+
+        # Check for errors in preview
+        if "error" in preview:
+            logging.error("Rebalance preview error: %s", preview['error'])
+            return
+
+        # Build response message
+        current_positions = preview.get("current_positions", {})
+        positions_dict = preview.get("positions_dict", {})
+        top_tickers = preview.get("top_tickers", [])
+        positions_to_close = preview.get("positions_to_close", [])
+        positions_to_open = preview.get("positions_to_open", [])
+        available_cash = preview.get("available_cash", 0.0)
+        position_size = preview.get("position_size", 0.0)
+
+        msg = "🔄 <b>Rebalance Request - Need Confirmation</b>\n\n"
+
+        # Current positions
+        msg += "<b>📍 Current Positions:</b>\n"
+        if current_positions:
+            for symbol, qty in current_positions.items():
+                pos_info = positions_dict.get(symbol)
+                if pos_info:
+                    market_value = float(getattr(pos_info, 'market_value', 0))
+                    msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
+                else:
+                    msg += f"  {symbol}: {float(qty):.2f} shares\n"
+        else:
+            msg += "  No open positions\n"
+
+        msg += "\n<b>🎯 Top 10 by Momentum:</b>\n"
+        for i, ticker in enumerate(top_tickers, 1):
+            msg += f"  {i}. {ticker}\n"
+
+        msg += "\n<b>📉 Positions to Close:</b>\n"
+        if positions_to_close:
+            for symbol in positions_to_close:
+                pos_info = positions_dict.get(symbol)
+                if pos_info:
+                    market_value = float(getattr(pos_info, 'market_value', 0))
+                    msg += f"  ❌ {symbol} (${market_value:.2f})\n"
+                else:
+                    msg += f"  ❌ {symbol}\n"
+        else:
+            msg += "  None\n"
+
+        msg += "\n<b>📈 Positions to Open:</b>\n"
+        if positions_to_open:
+            for symbol in positions_to_open:
+                msg += f"  ✅ {symbol} (${position_size:.2f})\n"
+        else:
+            msg += "  None\n"
+
+        msg += "\n<b>💰 Summary:</b>\n"
+        msg += f"  Available cash: ${available_cash:.2f}\n"
+        msg += f"  Position size: ${position_size:.2f}\n"
+        msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
+
+        msg += "\n<b>👉 Reply with:</b>\n"
+        msg += "  <code>да</code> or <code>yes</code> - Approve rebalance\n"
+        msg += "  <code>нет</code> or <code>no</code> - Reject rebalance"
+
+        await self._send_to_admins(msg)
 
     async def start(self) -> None:
         """Start Telegram bot."""
