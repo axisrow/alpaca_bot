@@ -39,21 +39,35 @@ class RebalanceFlag:
     """Класс для работы с флагом ребалансировки."""
 
     flag_path: Path = Path("data/last_rebalance.txt")
+    ny_timezone = pytz.timezone('America/New_York')
+
+    def get_last_rebalance_date(self) -> datetime | None:
+        """Получает дату последней ребалансировки.
+
+        Returns:
+            datetime | None: Дата последней ребалансировки или None
+        """
+        if not self.flag_path.exists():
+            return None
+        try:
+            date_str = self.flag_path.read_text(encoding='utf-8').strip()
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=self.ny_timezone)
+        except ValueError:
+            logging.error("Неверный формат даты в файле ребалансировки")
+            return None
 
     def has_rebalanced_today(self) -> bool:
         """Проверяет, была ли ребалансировка сегодня."""
         if not self.flag_path.exists():
             return False
-        return (self.flag_path.read_text(encoding='utf-8').strip() ==
-                datetime.now().strftime("%Y-%m-%d"))
+        today_ny = datetime.now(self.ny_timezone).strftime("%Y-%m-%d")
+        return self.flag_path.read_text(encoding='utf-8').strip() == today_ny
 
     def write_flag(self) -> None:
         """Записывает флаг ребалансировки."""
         self.flag_path.parent.mkdir(parents=True, exist_ok=True)
-        self.flag_path.write_text(
-            datetime.now().strftime("%Y-%m-%d"),
-            encoding='utf-8'
-        )
+        today_ny = datetime.now(self.ny_timezone).strftime("%Y-%m-%d")
+        self.flag_path.write_text(today_ny, encoding='utf-8')
 
 
 class MarketSchedule:
@@ -110,6 +124,36 @@ class MarketSchedule:
             logging.info("Рынок закрыт: %s", reason)
         return is_open
 
+    def count_trading_days(self, start_date: datetime, end_date: datetime) -> int:
+        """Подсчитывает количество торговых дней между двумя датами.
+
+        Args:
+            start_date: Начальная дата (не включается)
+            end_date: Конечная дата (включается)
+
+        Returns:
+            int: Количество торговых дней (только пн-пт)
+        """
+        from datetime import timedelta
+
+        # Если даты без timezone, добавляем NY timezone
+        if start_date.tzinfo is None:
+            start_date = self.NY_TIMEZONE.localize(start_date)
+        if end_date.tzinfo is None:
+            end_date = self.NY_TIMEZONE.localize(end_date)
+
+        trading_days = 0
+        current = start_date.date()
+        end = end_date.date()
+
+        while current <= end:
+            # Считаем только будни (пн-пт), 0-4 это пн-пт
+            if current.weekday() < 5 and current > start_date.date():
+                trading_days += 1
+            current += timedelta(days=1)
+
+        return trading_days
+
 
 class PortfolioManager:
     """Класс для управления портфелем."""
@@ -145,6 +189,15 @@ class TradingBot:
         self.portfolio_manager = PortfolioManager(self.trading_client)
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
+        self.telegram_bot = None  # Будет установлен после создания TelegramBot
+
+    def set_telegram_bot(self, telegram_bot: object) -> None:
+        """Установка ссылки на Telegram бота для отправки уведомлений.
+
+        Args:
+            telegram_bot: Экземпляр TelegramBot
+        """
+        self.telegram_bot = telegram_bot
 
     def _load_environment(self) -> None:
         """Загрузка переменных окружения."""
@@ -172,6 +225,8 @@ class TradingBot:
 
     def perform_rebalance(self) -> None:
         """Выполнение ребалансировки портфеля."""
+        from config import REBALANCE_INTERVAL_DAYS
+
         if self.rebalance_flag.has_rebalanced_today():
             logging.info("Ребалансировка уже произведена сегодня.")
             return
@@ -181,9 +236,17 @@ class TradingBot:
             logging.info("Ребалансировка отложена: %s", reason)
             return
 
+        # Проверяем, прошло ли 22 торговых дня с последней ребалансировки
+        days_until = self.calculate_days_until_rebalance()
+        if days_until > 0:
+            logging.info("Ребалансировка не требуется. До ребалансировки осталось %d торговых дней.", days_until)
+            return
+
         # Вызываем ребалансировку напрямую через стратегию
+        logging.info("Выполняем ребалансировку портфеля...")
         self.portfolio_manager.strategy.rebalance()
         self.rebalance_flag.write_flag()
+        logging.info("Ребалансировка завершена.")
 
     def start(self) -> None:
         """Запуск бота."""
@@ -206,6 +269,17 @@ class TradingBot:
                 minute=0,
                 timezone=MarketSchedule.NY_TIMEZONE
             )
+            # Добавляем задачу для отправки ежедневного countdown
+            if self.telegram_bot:
+                self.scheduler.add_job(
+                    self.telegram_bot.send_daily_countdown_sync,
+                    'cron',
+                    day_of_week='mon-fri',
+                    hour=10,
+                    minute=0,
+                    timezone=MarketSchedule.NY_TIMEZONE
+                )
+                logging.info("Задача отправки countdown добавлена в расписание")
             self.scheduler.start()
             logging.info("Планировщик запущен")
         else:
@@ -284,6 +358,23 @@ class TradingBot:
             "mode": "Paper Trading"
         }
 
+    def calculate_days_until_rebalance(self) -> int:
+        """Подсчитывает количество торговых дней до ребалансировки.
+
+        Returns:
+            int: Количество оставшихся торговых дней (0 если пора ребалансировать)
+        """
+        from config import REBALANCE_INTERVAL_DAYS
+
+        last_date = self.rebalance_flag.get_last_rebalance_date()
+        if last_date is None:
+            return 0  # Пора ребалансировать, если никогда не было
+
+        today = datetime.now(MarketSchedule.NY_TIMEZONE)
+        trading_days_passed = self.market_schedule.count_trading_days(last_date, today)
+
+        return max(0, REBALANCE_INTERVAL_DAYS - trading_days_passed)
+
 
 class TelegramBot:
     """Класс для Telegram бота."""
@@ -353,6 +444,68 @@ class TelegramBot:
                     exc
                 )
 
+    async def send_daily_countdown(self) -> None:
+        """Отправка ежедневного countdown до ребалансировки администраторам."""
+        if not ADMIN_IDS:
+            logging.info("Список администраторов пуст, countdown не отправлен")
+            return
+
+        days_until = self.trading_bot.calculate_days_until_rebalance()
+        now_ny = datetime.now(MarketSchedule.NY_TIMEZONE)
+
+        if days_until == 0:
+            message = (
+                "⏰ <b>Ребалансировка сегодня!</b>\n\n"
+                f"🕐 Время (NY): {now_ny.strftime('%H:%M:%S')}\n"
+                "🔄 Портфель будет переформирован на лучшие 10 акций S&P 500\n"
+            )
+        else:
+            message = (
+                f"📊 <b>Countdown до ребалансировки</b>\n\n"
+                f"📅 Осталось: <b>{days_until}</b> торговых дней\n"
+                f"🕐 Время (NY): {now_ny.strftime('%H:%M:%S')}\n"
+            )
+
+        # Отправляем сообщение каждому администратору
+        for admin_id in ADMIN_IDS:
+            try:
+                await self.bot.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+                logging.info("Countdown сообщение отправлено администратору %s", admin_id)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error(
+                    "Ошибка отправки countdown сообщения администратору %s: %s",
+                    admin_id,
+                    exc
+                )
+
+    def send_daily_countdown_sync(self) -> None:
+        """Синхронная обертка для отправки countdown (для вызова из scheduler)."""
+        try:
+            # Получаем текущий event loop или создаем новый
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # Нет running loop, используем asyncio.run
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self.send_daily_countdown())
+                finally:
+                    loop.close()
+            else:
+                # Есть running loop, используем run_coroutine_threadsafe
+                future = asyncio.run_coroutine_threadsafe(
+                    self.send_daily_countdown(), loop
+                )
+                future.result(timeout=30)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Ошибка при отправке countdown: %s", exc)
+
     async def start(self) -> None:
         """Запуск Telegram бота."""
         logging.info("=== Запуск Telegram бота ===")
@@ -367,6 +520,9 @@ async def main() -> None:
     """Основная функция программы."""
     trading_bot = TradingBot()
     telegram_bot = TelegramBot(trading_bot)
+
+    # Передаем ссылку на Telegram бота в торговый бот
+    trading_bot.set_telegram_bot(telegram_bot)
 
     # Запуск торгового бота (запускает планировщик)
     trading_bot.start()
