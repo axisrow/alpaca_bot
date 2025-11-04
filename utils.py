@@ -1,4 +1,4 @@
-"""Утилиты и вспомогательные функции."""
+"""Utilities and helper functions."""
 import logging
 import time
 from functools import wraps
@@ -11,14 +11,14 @@ def retry_on_exception(
     retries: int = 3,
     delay: int = 1
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Декоратор для повторных попыток выполнения функции при исключении.
+    """Decorator for retrying function execution on exception.
 
     Args:
-        retries: Количество попыток выполнения
-        delay: Задержка между попытками в секундах
+        retries: Number of execution attempts
+        delay: Delay between attempts in seconds
 
     Returns:
-        Декорированная функция с механизмом повторных попыток
+        Decorated function with retry mechanism
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -30,7 +30,7 @@ def retry_on_exception(
                     if attempt == retries - 1:
                         raise
                     logging.warning(
-                        "Попытка %d не удалась: %s",
+                        "Attempt %d failed: %s",
                         attempt + 1,
                         exc
                     )

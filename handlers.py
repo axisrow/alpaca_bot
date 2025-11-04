@@ -1,174 +1,176 @@
-"""Модуль с обработчиками команд Telegram бота."""
+"""Module with Telegram bot command handlers."""
 import logging
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
 
 def setup_router(trading_bot):
-    """Настройка роутера с доступом к TradingBot.
+    """Setup router with access to TradingBot.
 
     Args:
-        trading_bot: Экземпляр торгового бота
+        trading_bot: Trading bot instance
 
     Returns:
-        Router: Настроенный роутер с обработчиками
+        Router: Configured router with handlers
     """
     router = Router()
 
     @router.message(Command("start"))
     async def cmd_start(message: Message):
-        """Обработчик команды /start."""
+        """Handle /start command."""
         await message.answer(
-            "Привет! Я ваш торговый бот-помощник.\n"
-            "Введите /help для списка доступных команд.",
+            "Hello! I'm your trading bot assistant.\n"
+            "Type /help to see available commands.",
             reply_markup=ReplyKeyboardRemove()
         )
 
     @router.message(Command("help"))
     async def cmd_help(message: Message):
-        """Обработчик команды /help."""
+        """Handle /help command."""
         await message.answer(
-            "Список доступных команд:\n"
-            "/start - Начать работу\n"
-            "/help - Показать помощь\n"
-            "/check_rebalance - Проверить дни до ребалансировки\n"
-            "/info - Информация о боте\n"
-            "/portfolio - Состояние портфеля\n"
-            "/stats - Торговая статистика\n"
-            "/settings - Настройки бота"
+            "Available commands:\n"
+            "/start - Start\n"
+            "/help - Show help\n"
+            "/check_rebalance - Days until rebalancing\n"
+            "/info - Bot information\n"
+            "/portfolio - Portfolio status\n"
+            "/stats - Trading statistics\n"
+            "/settings - Bot settings"
         )
 
     @router.message(Command("check_rebalance"))
     async def cmd_check_rebalance(message: Message):
-        """Обработчик команды /check_rebalance."""
+        """Handle /check_rebalance command."""
         try:
             days_until = trading_bot.calculate_days_until_rebalance()
 
             if days_until == 0:
                 msg = (
-                    "⏰ <b>Ребалансировка сегодня!</b>\n\n"
-                    "🔄 Портфель будет переформирован на лучшие 10 акций S&P 500\n"
-                    "⏱️ Время ребалансировки: 10:00 (NY)"
+                    "⏰ <b>Rebalancing today!</b>\n\n"
+                    "🔄 Portfolio will be rebalanced to top 10 S&P 500 stocks\n"
+                    "⏱️ Rebalance time: 10:00 (NY)"
                 )
             else:
+                next_rebalance_date = trading_bot.get_next_rebalance_date()
+                formatted_date = next_rebalance_date.strftime("%Y-%m-%d")
                 msg = (
-                    f"📊 <b>Countdown до ребалансировки</b>\n\n"
-                    f"📅 Осталось: <b>{days_until}</b> торговых дней\n"
-                    f"📈 Стратегия: Momentum Trading (S&P 500)\n"
-                    f"⏱️ Следующая ребалансировка: в течение {days_until} торговых дней"
+                    f"📊 <b>Rebalancing countdown</b>\n\n"
+                    f"📅 Days remaining: <b>{days_until}</b> trading days\n"
+                    f"📈 Strategy: Momentum Trading (S&P 500)\n"
+                    f"⏱️ Next rebalance: <b>{formatted_date}</b> at 10:00 AM (NY)"
                 )
 
             await message.answer(msg, parse_mode="HTML")
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Ошибка при проверке дней до ребалансировки: %s", exc)
+            logging.error("Error checking days until rebalance: %s", exc)
             await message.answer(
-                "❌ Ошибка при получении информации о ребалансировке"
+                "❌ Error retrieving rebalance information"
             )
 
     @router.message(Command("info"))
     async def show_info(message: Message):
-        """Обработчик команды /info."""
+        """Handle /info command."""
         await message.answer(
-            "Торговый бот для автоматической торговли на бирже.\n"
-            "Стратегия: Momentum Trading\n"
-            "Ребалансировка: ежедневно в 10:00 (NY)\n"
-            "Используется API Alpaca Markets"
+            "Automated trading bot for stock market trading.\n"
+            "Strategy: Momentum Trading\n"
+            "Rebalancing: daily at 10:00 (NY)\n"
+            "Uses Alpaca Markets API"
         )
 
     @router.message(Command("portfolio"))
     async def show_portfolio(message: Message):
-        """Обработчик команды /portfolio."""
+        """Handle /portfolio command."""
         try:
-            # Получаем данные о портфеле из TradingBot
+            # Get portfolio data from TradingBot
             positions, account, account_pnl = trading_bot.get_portfolio_status()
 
-            # Проверяем, что данные получены корректно
+            # Verify account data was retrieved correctly
             if not account:
-                raise ValueError("Не удалось получить данные аккаунта")
+                raise ValueError("Failed to retrieve account data")
 
-            # Формируем сообщение
-            msg = "Статус портфеля:\n\n"
+            # Build message
+            msg = "Portfolio Status:\n\n"
 
             if positions:
-                msg += "Позиции:\n"
+                msg += "Positions:\n"
                 for symbol, qty in positions.items():
-                    # Получаем рыночную стоимость позиции
+                    # Get market value for position
                     all_positions = trading_bot.trading_client.get_all_positions()
                     position = next((p for p in all_positions
                                      if p.symbol == symbol), None)
                     if position:
                         value = float(position.market_value)
-                        msg += (f"{symbol} – {float(qty):.2f} шт. "
+                        msg += (f"{symbol} – {float(qty):.2f} shares "
                                 f"(${value:.2f})\n")
                     else:
-                        msg += (f"{symbol} – {float(qty):.2f} шт. "
-                                f"(нет данных о стоимости)\n")
+                        msg += (f"{symbol} – {float(qty):.2f} shares "
+                                f"(no price data)\n")
             else:
-                msg += "Позиции: нет открытых позиций\n"
+                msg += "Positions: No open positions\n"
 
-            msg += "\nПротфель:\n"
-            msg += f"Итого: {float(account.portfolio_value):.2f}\n"
+            msg += "\nPortfolio:\n"
+            msg += f"Total: {float(account.portfolio_value):.2f}\n"
             msg += f"\nP&L: ${account_pnl:.2f}"
 
             await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Ошибка при получении данных портфеля: %s", exc)
+            logging.error("Error retrieving portfolio data: %s", exc)
             await message.answer(
-                "❌ Ошибка при получении данных портфеля"
+                "❌ Error retrieving portfolio data"
             )
 
     @router.message(Command("stats"))
     async def show_stats(message: Message):
-        """Обработчик команды /stats."""
+        """Handle /stats command."""
         try:
-            # Получаем статистику из TradingBot
+            # Get statistics from TradingBot
             stats = trading_bot.get_trading_stats()
 
-            # Проверяем, что статистика получена
+            # Verify statistics were retrieved
             if not stats:
-                raise ValueError("Статистика недоступна")
+                raise ValueError("Statistics unavailable")
 
-            msg = "Торговая статистика:\n"
-            msg += f"Сделок за сегодня: {stats.get('trades_today', 0)}\n"
-            msg += f"Прибыль/убыток: ${stats.get('pnl', 0.0):.2f}\n"
+            msg = "Trading Statistics:\n"
+            msg += f"Trades today: {stats.get('trades_today', 0)}\n"
+            msg += f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
             msg += f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
             await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Ошибка при получении торговой статистики: %s", exc)
+            logging.error("Error retrieving trading statistics: %s", exc)
             await message.answer(
-                "❌ Ошибка при получении торговой статистики"
+                "❌ Error retrieving trading statistics"
             )
 
     @router.message(Command("settings"))
     async def show_settings(message: Message):
-        """Обработчик команды /settings."""
+        """Handle /settings command."""
         try:
-            # Получаем настройки из TradingBot
+            # Get settings from TradingBot
             settings = trading_bot.get_settings()
 
-            # Проверяем, что настройки получены
+            # Verify settings were retrieved
             if not settings:
-                raise ValueError("Настройки недоступны")
+                raise ValueError("Settings unavailable")
 
-            msg = "Настройки бота:\n"
-            msg += (f"- Время ребалансировки: "
-                    f"{settings.get('rebalance_time', 'не задано')}\n")
-            msg += (f"- Количество позиций: "
+            msg = "Bot Settings:\n"
+            msg += (f"- Rebalance time: "
+                    f"{settings.get('rebalance_time', 'not set')}\n")
+            msg += (f"- Number of positions: "
                     f"{settings.get('positions_count', 0)}\n")
-            msg += f"- Режим: {settings.get('mode', 'не задан')}"
+            msg += f"- Mode: {settings.get('mode', 'not set')}"
             await message.answer(msg)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Ошибка при получении настроек: %s", exc)
-            await message.answer("❌ Ошибка при получении настроек")
+            logging.error("Error retrieving settings: %s", exc)
+            await message.answer("❌ Error retrieving settings")
 
     @router.message()
     async def echo(message: Message):
-        """Обработчик всех остальных сообщений."""
+        """Handle all other messages."""
         await message.answer(
-            "Используйте кнопки меню или команды для управления ботом.\n"
-            "Для помощи введите /help"
+            "Use menu buttons or commands to control the bot.\n"
+            "Type /help for assistance"
         )
 
     return router

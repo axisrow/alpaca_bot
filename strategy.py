@@ -1,4 +1,4 @@
-"""Модуль с торговыми стратегиями."""
+"""Module with trading strategies."""
 import logging
 import time
 from typing import Dict, List
@@ -12,28 +12,28 @@ from utils import retry_on_exception
 
 
 class MomentumStrategy:
-    """Класс реализующий торговую стратегию на основе моментума."""
+    """Class implementing momentum-based trading strategy."""
 
     def __init__(self, trading_client: TradingClient, tickers: List[str]):
-        """Инициализация стратегии.
+        """Initialize strategy.
 
         Args:
-            trading_client: Клиент для работы с Alpaca API
-            tickers: Список тикеров для торговли
+            trading_client: Alpaca API client
+            tickers: List of tickers for trading
         """
         self.trading_client = trading_client
         self.tickers = tickers
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
-        """Получение торговых сигналов - топ-10 акций по моментуму.
+        """Get trading signals - top 10 stocks by momentum.
 
         Returns:
-            List[str]: Список тикеров с наивысшим моментумом
+            List[str]: List of tickers with highest momentum
         """
         data = yf.download(self.tickers, period="1y", timeout=30)
         if 'Close' not in data.columns:
-            raise KeyError("Столбец 'Close' отсутствует в данных")
+            raise KeyError("'Close' column not found in data")
 
         momentum_returns = (
             data['Close']
@@ -46,34 +46,34 @@ class MomentumStrategy:
 
     @retry_on_exception()
     def get_positions(self) -> Dict[str, float]:
-        """Получение текущих позиций.
+        """Get current positions.
 
         Returns:
-            Dict[str, float]: Словарь текущих позиций
+            Dict[str, float]: Dictionary of current positions
         """
         positions = self.trading_client.get_all_positions()
         return {pos.symbol: float(pos.qty) for pos in positions}
 
     def close_positions(self, positions: List[str]) -> None:
-        """Закрытие указанных позиций.
+        """Close specified positions.
 
         Args:
-            positions: Список тикеров для закрытия
+            positions: List of tickers to close
         """
         for ticker in positions:
             try:
                 self.trading_client.close_position(ticker)
-                logging.info("Позиция %s закрыта", ticker)
+                logging.info("Position %s closed", ticker)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Ошибка закрытия позиции %s: %s", ticker, exc)
+                logging.error("Error closing position %s: %s", ticker, exc)
 
     def open_positions(self, tickers: List[str],
                        cash_per_position: float) -> None:
-        """Открытие новых позиций.
+        """Open new positions.
 
         Args:
-            tickers: Список тикеров для открытия
-            cash_per_position: Размер позиции в долларах
+            tickers: List of tickers to open
+            cash_per_position: Position size in dollars
         """
         for ticker in tickers:
             try:
@@ -86,27 +86,27 @@ class MomentumStrategy:
                 )
                 self.trading_client.submit_order(order)
                 logging.info(
-                    "Открыта позиция %s на $%.2f",
+                    "Opened position %s for $%.2f",
                     ticker,
                     cash_per_position
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Ошибка открытия позиции %s: %s", ticker, exc)
+                logging.error("Error opening position %s: %s", ticker, exc)
 
     def rebalance(self) -> None:
-        """Ребалансировка портфеля."""
+        """Rebalance portfolio."""
         try:
-            logging.info("Начало ребалансировки портфеля")
+            logging.info("Starting portfolio rebalancing")
 
-            # Получаем сигналы торговой стратегии
+            # Get trading strategy signals
             top_tickers = self.get_signals()
-            logging.info("Топ-10 акций по моментуму: %s", ', '.join(top_tickers))
+            logging.info("Top 10 stocks by momentum: %s", ', '.join(top_tickers))
 
-            # Получаем текущие позиции
+            # Get current positions
             current_positions = self.get_positions()
-            logging.info("Текущие позиции: %s", current_positions)
+            logging.info("Current positions: %s", current_positions)
 
-            # Определяем позиции для закрытия и открытия
+            # Determine positions to close and open
             positions_to_close = [
                 ticker for ticker in current_positions
                 if ticker not in top_tickers
@@ -116,21 +116,21 @@ class MomentumStrategy:
                 if ticker not in current_positions
             ]
 
-            logging.info("Позиции для закрытия: %s", positions_to_close)
-            logging.info("Позиции для открытия: %s", positions_to_open)
+            logging.info("Positions to close: %s", positions_to_close)
+            logging.info("Positions to open: %s", positions_to_open)
 
-            # Закрываем ненужные позиции
+            # Close unneeded positions
             if positions_to_close:
                 self.close_positions(positions_to_close)
                 time.sleep(5)
 
-            # Открываем новые позиции
+            # Open new positions
             if positions_to_open:
                 account = self.trading_client.get_account()
                 available_cash = float(account.cash)
                 if available_cash <= 0:
                     logging.warning(
-                        "Недостаточно средств: $%.2f",
+                        "Insufficient funds: $%.2f",
                         available_cash
                     )
                     return
@@ -138,14 +138,14 @@ class MomentumStrategy:
                 position_size = available_cash / len(positions_to_open)
                 if position_size < 1:
                     logging.warning(
-                        "Размер позиции слишком мал: $%.2f",
+                        "Position size too small: $%.2f",
                         position_size
                     )
                     return
 
                 self.open_positions(positions_to_open, position_size)
 
-            logging.info("Ребалансировка выполнена успешно")
+            logging.info("Portfolio rebalancing completed successfully")
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Ошибка при ребалансировке: %s", exc, exc_info=True)
+            logging.error("Error during rebalancing: %s", exc, exc_info=True)

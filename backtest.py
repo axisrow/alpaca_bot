@@ -1,4 +1,4 @@
-"""Модуль для бэктестинга торговой стратегии."""
+"""Module for backtesting trading strategy."""
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List
@@ -12,15 +12,15 @@ from config import snp500_tickers
 from strategy import MomentumStrategy
 
 # =======================
-# НАСТРОЙКИ БЭКТЕСТА
+# BACKTEST SETTINGS
 # =======================
 INITIAL_CASH = 100000.0
 START_DATE = datetime(2025, 3, 1)
 END_DATE = datetime(2025, 3, 3)
-# Ребалансировка по дням (можно изменить на 'M' для месячной и т.п.)
+# Rebalancing by day (can be changed to 'M' for monthly, etc.)
 REBALANCING_FREQUENCY = 'D'
 
-# Настройка логирования
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
@@ -28,40 +28,40 @@ logging.basicConfig(
 
 
 class FakePosition:
-    """Фейковая позиция для симуляции."""
+    """Fake position for simulation."""
 
     def __init__(self, symbol: str, qty: float):
-        """Инициализация позиции.
+        """Initialize position.
 
         Args:
-            symbol: Тикер
-            qty: Количество акций
+            symbol: Ticker
+            qty: Number of shares
         """
         self.symbol = symbol
         self.qty = qty
 
 
 class FakeAccount:
-    """Фейковый аккаунт для симуляции."""
+    """Fake account for simulation."""
 
     def __init__(self, cash: float):
-        """Инициализация аккаунта.
+        """Initialize account.
 
         Args:
-            cash: Наличные средства
+            cash: Available cash
         """
         self.cash = cash
 
 
 class FakeTradingClient:
-    """Фейковый торговый клиент для симуляции."""
+    """Fake trading client for simulation."""
 
     def __init__(self, initial_cash: float, prices: pd.DataFrame):
-        """Инициализация клиента.
+        """Initialize client.
 
         Args:
-            initial_cash: Начальный капитал
-            prices: DataFrame с историческими ценами
+            initial_cash: Initial capital
+            prices: DataFrame with historical prices
         """
         self.cash = initial_cash
         self.positions: Dict[str, float] = {}
@@ -70,21 +70,21 @@ class FakeTradingClient:
         self.trade_history: List[Dict] = []
 
     def set_current_date(self, date: pd.Timestamp) -> None:
-        """Установка текущей даты для симуляции.
+        """Set current date for simulation.
 
         Args:
-            date: Дата для установки
+            date: Date to set
         """
         self.current_date = date
 
     def get_price(self, ticker: str) -> float:
-        """Получение цены для тикера на текущую дату.
+        """Get price for ticker on current date.
 
         Args:
-            ticker: Тикер
+            ticker: Ticker
 
         Returns:
-            float: Цена акции
+            float: Stock price
         """
         try:
             price = self.prices[ticker].reindex(
@@ -94,48 +94,48 @@ class FakeTradingClient:
             return float(price)
         except Exception as exc:
             raise ValueError(
-                f"Не удалось получить цену для {ticker} "
-                f"на {self.current_date}"
+                f"Failed to get price for {ticker} "
+                f"on {self.current_date}"
             ) from exc
 
     def get_all_positions(self) -> List[FakePosition]:
-        """Получение всех позиций.
+        """Get all positions.
 
         Returns:
-            List[FakePosition]: Список позиций
+            List[FakePosition]: List of positions
         """
         return [FakePosition(ticker, qty)
                 for ticker, qty in self.positions.items()]
 
     def get_account(self) -> FakeAccount:
-        """Получение информации об аккаунте.
+        """Get account information.
 
         Returns:
-            FakeAccount: Информация об аккаунте
+            FakeAccount: Account information
         """
         return FakeAccount(self.cash)
 
     def close_position(self, ticker: str) -> None:
-        """Закрытие позиции.
+        """Close position.
 
         Args:
-            ticker: Тикер для закрытия
+            ticker: Ticker to close
         """
         if ticker not in self.positions:
-            raise ValueError(f"Позиция по {ticker} отсутствует")
+            raise ValueError(f"No position for {ticker}")
         price = self.get_price(ticker)
         qty = self.positions[ticker]
         proceeds = qty * price
         self.cash += proceeds
         logging.info(
-            "Фейковый клиент: продана позиция %s (%s акций по $%.2f), "
-            "получено $%.2f",
+            "Fake client: Sold position %s (%s shares at $%.2f), "
+            "proceeds $%.2f",
             ticker,
             qty,
             price,
             proceeds
         )
-        # Запись сделки на продажу
+        # Record sell transaction
         self.trade_history.append({
             'date': self.current_date,
             'symbol': ticker,
@@ -147,37 +147,37 @@ class FakeTradingClient:
         del self.positions[ticker]
 
     def submit_order(self, order) -> None:
-        """Отправка ордера на исполнение.
+        """Submit order for execution.
 
         Args:
-            order: Ордер для исполнения
+            order: Order to execute
         """
         if order.side == OrderSide.BUY:
             price = self.get_price(order.symbol)
             shares = int(order.notional // price)
             if shares <= 0:
                 raise ValueError(
-                    f"Недостаточно средств для покупки хотя бы 1 акции "
-                    f"{order.symbol}"
+                    f"Insufficient funds to buy at least 1 share "
+                    f"of {order.symbol}"
                 )
             cost = shares * price
             if cost > self.cash:
                 raise ValueError(
-                    f"Недостаточно наличных для покупки {order.symbol}"
+                    f"Insufficient cash to buy {order.symbol}"
                 )
             self.cash -= cost
             self.positions[order.symbol] = (
                 self.positions.get(order.symbol, 0) + shares
             )
             logging.info(
-                "Фейковый клиент: куплено %s акций %s по $%.2f, "
-                "затрачено $%.2f",
+                "Fake client: Bought %s shares of %s at $%.2f, "
+                "cost $%.2f",
                 shares,
                 order.symbol,
                 price,
                 cost
             )
-            # Запись сделки на покупку
+            # Record buy transaction
             self.trade_history.append({
                 'date': self.current_date,
                 'symbol': order.symbol,
@@ -187,11 +187,11 @@ class FakeTradingClient:
                 'total': cost
             })
         else:
-            raise NotImplementedError("Поддерживаются только ордера на покупку")
+            raise NotImplementedError("Only buy orders are supported")
 
 
 class BacktestMomentumStrategy(MomentumStrategy):
-    """Подкласс стратегии для бэктеста с историческими данными."""
+    """Strategy subclass for backtesting with historical data."""
 
     def __init__(
         self,
@@ -200,23 +200,23 @@ class BacktestMomentumStrategy(MomentumStrategy):
         prices: pd.DataFrame,
         current_date: pd.Timestamp
     ):
-        """Инициализация стратегии для бэктеста.
+        """Initialize strategy for backtesting.
 
         Args:
-            trading_client: Торговый клиент
-            tickers: Список тикеров
-            prices: DataFrame с историческими ценами
-            current_date: Текущая дата для симуляции
+            trading_client: Trading client
+            tickers: List of tickers
+            prices: DataFrame with historical prices
+            current_date: Current date for simulation
         """
         super().__init__(trading_client, tickers)
         self.prices = prices
         self.current_date = current_date
 
     def get_signals(self) -> List[str]:
-        """Получение сигналов на основе исторических данных.
+        """Get signals based on historical data.
 
         Returns:
-            List[str]: Список тикеров с наивысшим моментумом
+            List[str]: List of tickers with highest momentum
         """
         one_year_ago = self.current_date - timedelta(days=365)
         try:
@@ -230,7 +230,7 @@ class BacktestMomentumStrategy(MomentumStrategy):
             ).iloc[0]
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error(
-                "Ошибка получения цен для расчёта импульса на %s: %s",
+                "Error getting prices for momentum calculation on %s: %s",
                 self.current_date,
                 exc
             )
@@ -240,19 +240,19 @@ class BacktestMomentumStrategy(MomentumStrategy):
 
 
 def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
-    """Основная функция бэктестинга."""
+    """Main backtesting function."""
     # ---------------------------
-    # ЗАГРУЗКА И ПОДГОТОВКА ДАННЫХ
+    # LOAD AND PREPARE DATA
     # ---------------------------
     data_start = START_DATE - timedelta(days=370)
-    logging.info("Загрузка исторических данных с yfinance...")
+    logging.info("Loading historical data from yfinance...")
     data = yf.download(snp500_tickers,
                        start=data_start.strftime("%Y-%m-%d"),
                        end=END_DATE.strftime("%Y-%m-%d"),
                        group_by='ticker',
                        progress=False)
 
-    # Извлекаем данные 'Close' для каждого тикера
+    # Extract 'Close' data for each ticker
     close_data = {}
     for ticker in snp500_tickers:
         try:
@@ -260,20 +260,20 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
             if 'Close' in ticker_df.columns:
                 close_data[ticker] = ticker_df['Close']
             else:
-                logging.warning("Нет данных 'Close' для %s", ticker)
+                logging.warning("No 'Close' data for %s", ticker)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.warning("Ошибка загрузки данных для %s: %s", ticker, exc)
+            logging.warning("Error loading data for %s: %s", ticker, exc)
 
     prices = pd.DataFrame(close_data)
     if prices.empty:
-        logging.error("Не удалось загрузить данные ни для одного тикера.")
+        logging.error("Failed to load data for any ticker.")
         return
     prices.sort_index(inplace=True)
     prices.index = pd.to_datetime(prices.index)
 
     available_tickers = list(prices.columns)
     if not available_tickers:
-        logging.error("Нет доступных тикеров для бэктеста.")
+        logging.error("No available tickers for backtesting.")
         return
 
     trading_dates = prices.index
@@ -286,7 +286,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
     )
 
     # ---------------------------
-    # ИНИЦИАЛИЗАЦИЯ КЛИЕНТА, СТРАТЕГИИ И ДОКУМЕНТАЦИЯ ТРАНЗАКЦИЙ
+    # INITIALIZE CLIENT, STRATEGY AND TRANSACTION LOGGING
     # ---------------------------
     fake_client = FakeTradingClient(INITIAL_CASH, prices)
     strategy = BacktestMomentumStrategy(
@@ -298,10 +298,10 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
     portfolio_history: List[Dict] = []
 
     # ---------------------------
-    # ЦИКЛ БЭКТЕСТА
+    # BACKTEST LOOP
     # ---------------------------
     for current_date in rebalancing_dates.index:
-        logging.info("\n--- Ребалансировка на %s ---", current_date.date())
+        logging.info("\n--- Rebalancing on %s ---", current_date.date())
         fake_client.set_current_date(current_date)
         strategy.current_date = current_date
 
@@ -309,12 +309,12 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
             strategy.rebalance()
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error(
-                "Ошибка при ребалансировке на %s: %s",
+                "Error during rebalancing on %s: %s",
                 current_date.date(),
                 exc
             )
 
-        # Рассчитываем стоимость портфеля на текущую дату
+        # Calculate portfolio value for current date
         total_value = fake_client.cash
         for ticker, qty in fake_client.positions.items():
             try:
@@ -322,13 +322,13 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
                 total_value += qty * price
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logging.warning(
-                    "Не удалось получить цену для %s на %s: %s",
+                    "Failed to get price for %s on %s: %s",
                     ticker,
                     current_date.date(),
                     exc
                 )
         logging.info(
-            "Стоимость портфеля на %s: $%.2f",
+            "Portfolio value on %s: $%.2f",
             current_date.date(),
             total_value
         )
@@ -337,7 +337,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
             'portfolio_value': total_value
         })
 
-    # Финальная оценка портфеля
+    # Final portfolio valuation
     final_date = rebalancing_dates.index[-1]
     final_value = fake_client.cash
     for ticker, qty in fake_client.positions.items():
@@ -346,38 +346,38 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
             final_value += qty * price
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.warning(
-                "Не удалось получить цену для %s на %s: %s",
+                "Failed to get price for %s on %s: %s",
                 ticker,
                 final_date.date(),
                 exc
             )
     logging.info(
-        "\nФинальная стоимость портфеля на %s: $%.2f",
+        "\nFinal portfolio value on %s: $%.2f",
         final_date.date(),
         final_value
     )
 
     # ---------------------------
-    # ВИЗУАЛИЗАЦИЯ ДОХОДНОСТИ ПОРТФЕЛЯ
+    # VISUALIZE PORTFOLIO RETURNS
     # ---------------------------
     portfolio_df = pd.DataFrame(portfolio_history)
     portfolio_df.set_index('date', inplace=True)
     plt.figure(figsize=(10, 6))
     plt.plot(portfolio_df.index, portfolio_df['portfolio_value'], marker='o')
-    plt.title("Динамика стоимости портфеля")
-    plt.xlabel("Дата")
-    plt.ylabel("Стоимость портфеля, $")
+    plt.title("Portfolio Performance")
+    plt.xlabel("Date")
+    plt.ylabel("Portfolio Value ($)")
     plt.grid(True)
     plt.savefig("data/portfolio_performance.png")
     plt.show()
-    logging.info("График динамики портфеля сохранён как portfolio_performance.png")
+    logging.info("Portfolio performance chart saved as portfolio_performance.png")
 
     # ---------------------------
-    # СОХРАНЕНИЕ ИСТОРИИ СДЕЛОК В CSV
+    # SAVE TRADE HISTORY TO CSV
     # ---------------------------
     trades_df = pd.DataFrame(fake_client.trade_history)
     trades_df.to_csv("data/trades_history.csv", index=False)
-    logging.info("История сделок сохранена в файл data/trades_history.csv")
+    logging.info("Trade history saved to data/trades_history.csv")
 
 
 if __name__ == "__main__":
