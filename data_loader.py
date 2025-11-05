@@ -4,7 +4,7 @@ import os
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 import yfinance as yf
@@ -56,7 +56,7 @@ class DataLoader:
         logger.info(f"Loading data from yfinance (progress={'enabled' if show_progress else 'disabled'})")
 
         # Prepare download parameters
-        download_kwargs = {"progress": show_progress}
+        download_kwargs: dict[str, Any] = {"progress": show_progress}
 
         if period:
             download_kwargs["period"] = period
@@ -66,6 +66,9 @@ class DataLoader:
             download_kwargs["end"] = end
         if group_by:
             download_kwargs["group_by"] = group_by
+
+        # Explicitly set auto_adjust to avoid FutureWarning
+        download_kwargs["auto_adjust"] = True
 
         # Download data
         data = yf.download(tickers, **download_kwargs)

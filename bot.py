@@ -302,6 +302,12 @@ class TradingBot:
         else:
             self.execute_rebalance()
 
+    def perform_daily_task(self) -> None:
+        """Perform daily task: send countdown and rebalance if needed."""
+        if self.telegram_bot:
+            self.telegram_bot.send_daily_countdown_sync()
+        self.perform_rebalance()
+
     def start(self) -> None:
         """Start the bot."""
         logging.info("=== Starting trading bot ===")
@@ -312,27 +318,15 @@ class TradingBot:
                      'open' if is_open else 'closed',
                      f" (Reason: {reason})" if not is_open else "")
         if not self.scheduler.running:
+            self.scheduler.start()
             self.scheduler.add_job(
-                self.perform_rebalance,
+                self.perform_daily_task,
                 'cron',
                 day_of_week='mon-fri',
                 hour=10,
                 minute=0,
                 timezone=NY_TIMEZONE
             )
-            # Add task for daily countdown
-            if self.telegram_bot:
-                self.scheduler.add_job(
-                    self.telegram_bot.send_daily_countdown_sync,
-                    'cron',
-                    day_of_week='mon-fri',
-                    hour=10,
-                    minute=0,
-                    timezone=NY_TIMEZONE
-                )
-                logging.info("Countdown task added to schedule")
-            self.scheduler.start()
-            logging.info("Scheduler started")
         else:
             logging.info("Scheduler already running")
         if is_open:
