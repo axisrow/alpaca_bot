@@ -28,6 +28,7 @@ class DataLoader:
         start: Optional[str] = None,
         end: Optional[str] = None,
         group_by: Optional[str] = None,
+        telegram_bot: Optional[Any] = None,
     ) -> pd.DataFrame:
         """
         Load market data from cache or yfinance.
@@ -71,11 +72,37 @@ class DataLoader:
         download_kwargs["auto_adjust"] = True
 
         # Download data
-        data = yf.download(tickers, **download_kwargs)
+        try:
+            data = yf.download(tickers, **download_kwargs)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Failed to download market data: %s", exc, exc_info=True)
+            # Extract failed tickers from error message if possible
+            error_str = str(exc)
+            if "Failed downloads:" in error_str:
+                logger.warning("Partial download failure: %s", error_str)
+            raise
 
         if data is None or data.empty:
             logger.error("Failed to download market data")
             raise ValueError("No data downloaded from yfinance")
+
+        # Check for tickers with missing data (after successful download)
+        if isinstance(data, pd.DataFrame) and 'Close' in data.columns:
+            missing_tickers = []
+            if isinstance(data['Close'], pd.DataFrame):
+                # Multiple tickers case
+                for ticker in tickers:
+                    if ticker not in data['Close'].columns or data['Close'][ticker].isna().all():
+                        missing_tickers.append(ticker)
+            if missing_tickers:
+                error_msg = f"Data missing for tickers (may be delisted): {missing_tickers}"
+                logger.warning(error_msg)
+                if telegram_bot:
+                    telegram_bot.send_error_notification_sync(
+                        "Data Quality Warning",
+                        f"<code>{error_msg}</code>",
+                        is_warning=True
+                    )
 
         # Save to cache
         DataLoader._save_to_cache(data)

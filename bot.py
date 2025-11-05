@@ -176,14 +176,29 @@ class MarketSchedule:
 class PortfolioManager:
     """Class for managing portfolio."""
 
-    def __init__(self, trading_client: TradingClient):
+    def __init__(self, trading_client: TradingClient, telegram_bot: Any = None):
         """Initialize portfolio manager.
 
         Args:
             trading_client: Alpaca API client
+            telegram_bot: Optional TelegramBot instance for notifications
         """
         self.trading_client = trading_client
-        self.strategy = MomentumStrategy(self.trading_client, snp500_tickers)
+        self.telegram_bot = telegram_bot
+        self.strategy = MomentumStrategy(
+            self.trading_client,
+            snp500_tickers,
+            telegram_bot=telegram_bot
+        )
+
+    def set_telegram_bot(self, telegram_bot: Any) -> None:
+        """Set telegram bot instance for notifications.
+
+        Args:
+            telegram_bot: TelegramBot instance
+        """
+        self.telegram_bot = telegram_bot
+        self.strategy.telegram_bot = telegram_bot
 
     def get_current_positions(self) -> Dict[str, float]:
         """Get current positions.
@@ -215,6 +230,7 @@ class TradingBot:
             telegram_bot: TelegramBot instance
         """
         self.telegram_bot = telegram_bot
+        self.portfolio_manager.set_telegram_bot(telegram_bot)
 
     def _load_environment(self) -> None:
         """Load environment variables."""
@@ -265,10 +281,19 @@ class TradingBot:
 
     def execute_rebalance(self) -> None:
         """Execute portfolio rebalancing."""
-        logging.info("Performing portfolio rebalancing...")
-        self.portfolio_manager.strategy.rebalance()
-        self.rebalance_flag.write_flag()
-        logging.info("Rebalancing completed.")
+        try:
+            logging.info("Performing portfolio rebalancing...")
+            self.portfolio_manager.strategy.rebalance()
+            self.rebalance_flag.write_flag()
+            logging.info("Rebalancing completed.")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Rebalance failed: %s", exc, exc_info=True)
+            if self.telegram_bot:
+                self.telegram_bot.send_error_notification_sync(
+                    "Rebalancing Failed",
+                    f"Error during portfolio rebalancing:\n<code>{str(exc)}</code>"
+                )
+            raise
 
     def request_rebalance_confirmation_sync(self) -> None:
         """Request rebalance confirmation from admins (sync wrapper)."""
@@ -599,6 +624,51 @@ class TelegramBot:
                 asyncio.run(self.send_daily_countdown())
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error sending countdown: %s", exc)
+
+    async def send_error_notification(self, error_title: str, error_msg: str,
+                                      is_warning: bool = False) -> None:
+        """Send error notification to admins.
+
+        Args:
+            error_title: Error title/name
+            error_msg: Detailed error message
+            is_warning: If True, use warning icon (⚠️), else critical icon (🚨)
+        """
+        if not ADMIN_IDS:
+            logging.info("Admin list is empty, error notification not sent")
+            return
+
+        icon = "⚠️" if is_warning else "🚨"
+        now_ny = datetime.now(NY_TIMEZONE)
+        message = (
+            f"{icon} <b>Error: {error_title}</b>\n\n"
+            f"⏰ Time (NY): {now_ny.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"📝 Details:\n{error_msg}"
+        )
+
+        await self._send_to_admins(message)
+
+    def send_error_notification_sync(self, error_title: str, error_msg: str,
+                                     is_warning: bool = False) -> None:
+        """Sync wrapper for sending error notification.
+
+        Args:
+            error_title: Error title/name
+            error_msg: Detailed error message
+            is_warning: If True, use warning icon (⚠️), else critical icon (🚨)
+        """
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.run_coroutine_threadsafe(
+                    self.send_error_notification(error_title, error_msg, is_warning),
+                    loop
+                ).result(timeout=30)
+            except RuntimeError:
+                asyncio.run(self.send_error_notification(error_title, error_msg,
+                                                         is_warning))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Error sending error notification: %s", exc)
 
     async def send_rebalance_request(self) -> None:
         """Send rebalance request with preview and ask for confirmation."""

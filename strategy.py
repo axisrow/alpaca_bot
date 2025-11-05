@@ -1,7 +1,7 @@
 """Module with trading strategies."""
 import logging
 import time
-from typing import List, cast
+from typing import List, cast, Any, Optional
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
@@ -15,15 +15,18 @@ from utils import retry_on_exception, get_positions
 class MomentumStrategy:
     """Class implementing momentum-based trading strategy."""
 
-    def __init__(self, trading_client: TradingClient, tickers: List[str]):
+    def __init__(self, trading_client: TradingClient, tickers: List[str],
+                 telegram_bot: Optional[Any] = None):
         """Initialize strategy.
 
         Args:
             trading_client: Alpaca API client
             tickers: List of tickers for trading
+            telegram_bot: Optional TelegramBot instance for error notifications
         """
         self.trading_client = trading_client
         self.tickers = tickers
+        self.telegram_bot = telegram_bot
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
@@ -32,7 +35,18 @@ class MomentumStrategy:
         Returns:
             List[str]: List of tickers with highest momentum
         """
-        data = DataLoader.load_market_data(self.tickers, period="1y")
+        try:
+            data = DataLoader.load_market_data(self.tickers, period="1y", telegram_bot=self.telegram_bot)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Send notification on data loading error
+            if self.telegram_bot:
+                error_str = str(exc)
+                self.telegram_bot.send_error_notification_sync(
+                    "Data Loading Failed",
+                    f"Error loading market data from yfinance:\n<code>{error_str}</code>"
+                )
+            raise
+
         if data is None:
             raise KeyError("'Close' column not found in data")
         if data.empty or 'Close' not in data.columns:  # type: ignore[union-attr]
@@ -53,12 +67,36 @@ class MomentumStrategy:
         Args:
             positions: List of tickers to close
         """
+        failed_closures = []
         for ticker in positions:
             try:
                 self.trading_client.close_position(ticker)
                 logging.info("Position %s closed", ticker)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Error closing position %s: %s", ticker, exc)
+                logging.error(
+                    "Error closing position %s: %s",
+                    ticker,
+                    exc,
+                    exc_info=True
+                )
+                failed_closures.append((ticker, str(exc)))
+
+        if failed_closures:
+            error_details = "\n".join([
+                f"  • {ticker}: {error.split(chr(10))[0]}"
+                for ticker, error in failed_closures
+            ])
+            logging.warning(
+                "Failed to close %d position(s): %s",
+                len(failed_closures),
+                [(t, e.split('\n')[0]) for t, e in failed_closures]
+            )
+            if self.telegram_bot:
+                self.telegram_bot.send_error_notification_sync(
+                    "Failed to Close Positions",
+                    f"Failed to close {len(failed_closures)} position(s):\n{error_details}",
+                    is_warning=True
+                )
 
     def open_positions(self, tickers: List[str],
                        cash_per_position: float) -> None:
@@ -68,6 +106,7 @@ class MomentumStrategy:
             tickers: List of tickers to open
             cash_per_position: Position size in dollars
         """
+        failed_opens = []
         for ticker in tickers:
             try:
                 order = MarketOrderRequest(
@@ -84,7 +123,30 @@ class MomentumStrategy:
                     cash_per_position
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Error opening position %s: %s", ticker, exc)
+                logging.error(
+                    "Error opening position %s: %s",
+                    ticker,
+                    exc,
+                    exc_info=True
+                )
+                failed_opens.append((ticker, str(exc)))
+
+        if failed_opens:
+            error_details = "\n".join([
+                f"  • {ticker}: {error.split(chr(10))[0]}"
+                for ticker, error in failed_opens
+            ])
+            logging.warning(
+                "Failed to open %d position(s): %s",
+                len(failed_opens),
+                [(t, e.split('\n')[0]) for t, e in failed_opens]
+            )
+            if self.telegram_bot:
+                self.telegram_bot.send_error_notification_sync(
+                    "Failed to Open Positions",
+                    f"Failed to open {len(failed_opens)} position(s):\n{error_details}",
+                    is_warning=True
+                )
 
     def rebalance(self) -> None:
         """Rebalance portfolio."""

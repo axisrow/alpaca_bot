@@ -28,10 +28,23 @@ def retry_on_exception(
                     return func(*args, **kwargs)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     if attempt == retries:
+                        logging.error(
+                            "All %d attempts failed for %s (final error): %s",
+                            retries,
+                            func.__name__,
+                            exc,
+                            exc_info=True
+                        )
                         raise
-                    logging.warning("Attempt %d failed: %s", attempt, exc)
+                    logging.warning(
+                        "Attempt %d/%d failed for %s: %s",
+                        attempt,
+                        retries,
+                        func.__name__,
+                        exc
+                    )
                     time.sleep(delay)
-            raise RuntimeError(f"Unexpected: retry loop completed without returning or raising")
+            raise RuntimeError("Unexpected: retry loop completed without returning or raising")
         return wrapper
     return decorator
 
@@ -65,7 +78,17 @@ def telegram_handler(error_message: str = "❌ An error occurred"):
             try:
                 return await func(message, *args, **kwargs)
             except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error("Error in %s: %s", func.__name__, exc)
+                user_id = (
+                    getattr(message, 'from_user', {}).id
+                    if hasattr(message, 'from_user') else 'unknown'
+                )
+                logging.error(
+                    "Error in Telegram command %s (user %s): %s",
+                    func.__name__,
+                    user_id,
+                    exc,
+                    exc_info=True
+                )
                 await message.answer(error_message)
         return wrapper
     return decorator
