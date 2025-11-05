@@ -57,6 +57,16 @@ def mock_yfinance(monkeypatch):
 
 
 @pytest.fixture
+def mock_data_loader(monkeypatch):
+    """Mock DataLoader.load_market_data"""
+    df = pd.DataFrame({
+        "Close": [100 + i for i in range(250)]  # 250 trading days
+    })
+    monkeypatch.setattr("data_loader.DataLoader.load_market_data", MagicMock(return_value=df))
+    return df
+
+
+@pytest.fixture
 def mock_telegram_message():
     """Mock Telegram Message object"""
     message = AsyncMock()

@@ -40,8 +40,8 @@ class TestMomentumStrategy:
 
     def test_get_signals_key_error(self, strategy):
         """Should handle KeyError when Close column missing"""
-        with patch("strategy.yf.download") as mock_yf:
-            mock_yf.return_value = pd.DataFrame({"Open": [100, 101, 102]})
+        with patch("data_loader.DataLoader.load_market_data") as mock_load:
+            mock_load.return_value = pd.DataFrame({"Open": [100, 101, 102]})
 
             with pytest.raises(KeyError):
                 strategy.get_signals()

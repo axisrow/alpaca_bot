@@ -5,10 +5,10 @@ from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import yfinance as yf
 from alpaca.trading.enums import OrderSide
 
 from config import snp500_tickers
+from data_loader import DataLoader
 from strategy import MomentumStrategy
 
 # =======================
@@ -245,12 +245,11 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
     # LOAD AND PREPARE DATA
     # ---------------------------
     data_start = START_DATE - timedelta(days=370)
-    logging.info("Loading historical data from yfinance...")
-    data = yf.download(snp500_tickers,
-                       start=data_start.strftime("%Y-%m-%d"),
-                       end=END_DATE.strftime("%Y-%m-%d"),
-                       group_by='ticker',
-                       progress=False)
+    logging.info("Loading historical data from data_loader...")
+    data = DataLoader.load_market_data(snp500_tickers,
+                                       start=data_start.strftime("%Y-%m-%d"),
+                                       end=END_DATE.strftime("%Y-%m-%d"),
+                                       group_by='ticker')
 
     if data is None:
         logging.error("Failed to download data from yfinance.")

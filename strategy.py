@@ -4,11 +4,11 @@ import time
 from typing import List, cast
 
 import pandas as pd
-import yfinance as yf
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
+from data_loader import DataLoader
 from utils import retry_on_exception, get_positions
 
 
@@ -32,7 +32,7 @@ class MomentumStrategy:
         Returns:
             List[str]: List of tickers with highest momentum
         """
-        data = yf.download(self.tickers, period="1y", timeout=30)  # type: ignore[no-untyped-call]
+        data = DataLoader.load_market_data(self.tickers, period="1y")
         if data is None:
             raise KeyError("'Close' column not found in data")
         if data.empty or 'Close' not in data.columns:  # type: ignore[union-attr]

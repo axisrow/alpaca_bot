@@ -13,7 +13,7 @@ class TestRebalanceFlag:
 
     def test_get_last_rebalance_date_file_not_exists(self):
         """Should return None if flag file doesn't exist"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag = RebalanceFlag(flag_path=Path(tmpdir) / "nonexistent.txt")
@@ -22,7 +22,7 @@ class TestRebalanceFlag:
 
     def test_get_last_rebalance_date_valid_date(self):
         """Should return datetime if valid date in file"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag_path = Path(tmpdir) / "flag.txt"
@@ -33,7 +33,7 @@ class TestRebalanceFlag:
 
     def test_get_last_rebalance_date_invalid_date(self):
         """Should return None for invalid date format"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag_path = Path(tmpdir) / "flag.txt"
@@ -44,7 +44,7 @@ class TestRebalanceFlag:
 
     def test_has_rebalanced_today_true(self):
         """Should return True if rebalanced today"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag_path = Path(tmpdir) / "flag.txt"
@@ -55,7 +55,7 @@ class TestRebalanceFlag:
 
     def test_has_rebalanced_today_false(self):
         """Should return False if not rebalanced today"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag_path = Path(tmpdir) / "flag.txt"
@@ -66,7 +66,7 @@ class TestRebalanceFlag:
 
     def test_write_flag(self):
         """Should write today's date to file"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         with TemporaryDirectory() as tmpdir:
             flag_path = Path(tmpdir) / "flag.txt"
@@ -77,7 +77,7 @@ class TestRebalanceFlag:
 
     def test_get_countdown_message_zero_days(self):
         """Should return message for rebalance now"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         flag = RebalanceFlag()
         next_date = datetime.now(NY_TZ)
@@ -86,7 +86,7 @@ class TestRebalanceFlag:
 
     def test_get_countdown_message_positive_days(self):
         """Should return message with days until rebalance"""
-        from main import RebalanceFlag
+        from bot import RebalanceFlag
 
         flag = RebalanceFlag()
         next_date = datetime.now(NY_TZ) + timedelta(days=5)
@@ -99,7 +99,7 @@ class TestMarketSchedule:
 
     def test_current_ny_time(self, mock_trading_client):
         """Should return current time in NY timezone"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         schedule = MarketSchedule(mock_trading_client)
         now = schedule.current_ny_time
@@ -107,7 +107,7 @@ class TestMarketSchedule:
 
     def test_is_open_market_open(self, mock_trading_client):
         """Should return True when market is open"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         clock = MagicMock()
         clock.is_open = True
@@ -118,7 +118,7 @@ class TestMarketSchedule:
 
     def test_is_open_market_closed(self, mock_trading_client):
         """Should return False when market is closed"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         clock = MagicMock()
         clock.is_open = False
@@ -129,7 +129,7 @@ class TestMarketSchedule:
 
     def test_check_market_status_open(self, mock_trading_client):
         """Should return (True, message) when market open"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         clock = MagicMock()
         clock.is_open = True
@@ -142,7 +142,7 @@ class TestMarketSchedule:
 
     def test_check_market_status_closed(self, mock_trading_client):
         """Should return (False, message) when market closed"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         clock = MagicMock()
         clock.is_open = False
@@ -155,7 +155,7 @@ class TestMarketSchedule:
 
     def test_count_trading_days(self, mock_trading_client):
         """Should count trading days excluding weekends"""
-        from main import MarketSchedule
+        from bot import MarketSchedule
 
         schedule = MarketSchedule(mock_trading_client)
         # From Monday to Friday = 5 trading days
@@ -170,7 +170,7 @@ class TestPortfolioManager:
 
     def test_get_current_positions(self, mock_trading_client):
         """Should return current positions"""
-        from main import PortfolioManager
+        from bot import PortfolioManager
 
         manager = PortfolioManager(mock_trading_client)
         positions = manager.get_current_positions()
@@ -178,7 +178,7 @@ class TestPortfolioManager:
 
     def test_get_current_positions_empty(self, mock_trading_client):
         """Should handle empty positions"""
-        from main import PortfolioManager
+        from bot import PortfolioManager
 
         mock_trading_client.get_all_positions.return_value = []
         manager = PortfolioManager(mock_trading_client)
@@ -191,20 +191,20 @@ class TestTradingBot:
 
     def test_trading_bot_init(self, mock_env_vars, mock_trading_client):
         """Should initialize trading bot"""
-        from main import TradingBot
+        from bot import TradingBot
 
-        with patch("main.TradingClient", return_value=mock_trading_client):
-            with patch("main.load_dotenv"):
+        with patch("bot.TradingClient", return_value=mock_trading_client):
+            with patch("bot.load_dotenv"):
                 bot = TradingBot()
                 assert bot is not None
                 assert bot.trading_client is not None
 
     def test_perform_rebalance_skip_if_done_today(self, mock_env_vars, mock_trading_client):
         """Should skip rebalance if already done today"""
-        from main import TradingBot
+        from bot import TradingBot
 
-        with patch("main.TradingClient", return_value=mock_trading_client):
-            with patch("main.load_dotenv"):
+        with patch("bot.TradingClient", return_value=mock_trading_client):
+            with patch("bot.load_dotenv"):
                 bot = TradingBot()
                 bot.rebalance_flag = MagicMock()
                 bot.rebalance_flag.has_rebalanced_today.return_value = True
@@ -216,10 +216,10 @@ class TestTradingBot:
 
     def test_perform_rebalance_market_closed(self, mock_env_vars, mock_trading_client):
         """Should skip rebalance if market is closed"""
-        from main import TradingBot
+        from bot import TradingBot
 
-        with patch("main.TradingClient", return_value=mock_trading_client):
-            with patch("main.load_dotenv"):
+        with patch("bot.TradingClient", return_value=mock_trading_client):
+            with patch("bot.load_dotenv"):
                 bot = TradingBot()
                 bot.rebalance_flag = MagicMock()
                 bot.rebalance_flag.has_rebalanced_today.return_value = False
@@ -234,10 +234,10 @@ class TestTradingBot:
 
     def test_calculate_days_until_rebalance(self, mock_env_vars, mock_trading_client):
         """Should calculate days until next rebalance"""
-        from main import TradingBot
+        from bot import TradingBot
 
-        with patch("main.TradingClient", return_value=mock_trading_client):
-            with patch("main.load_dotenv"):
+        with patch("bot.TradingClient", return_value=mock_trading_client):
+            with patch("bot.load_dotenv"):
                 bot = TradingBot()
                 days = bot.calculate_days_until_rebalance()
                 assert isinstance(days, int)
@@ -245,10 +245,10 @@ class TestTradingBot:
 
     def test_get_portfolio_status(self, mock_env_vars, mock_trading_client):
         """Should return portfolio status"""
-        from main import TradingBot
+        from bot import TradingBot
 
-        with patch("main.TradingClient", return_value=mock_trading_client):
-            with patch("main.load_dotenv"):
+        with patch("bot.TradingClient", return_value=mock_trading_client):
+            with patch("bot.load_dotenv"):
                 bot = TradingBot()
                 positions, account, pnl = bot.get_portfolio_status()
                 assert isinstance(positions, dict)

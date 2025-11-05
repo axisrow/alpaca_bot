@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Environment (dev, local, prod)
-ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
+# Environment (local, prod)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "prod")
 
 # Telegram bot token
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
