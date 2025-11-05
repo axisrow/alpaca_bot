@@ -1,7 +1,7 @@
 """Module with trading strategies."""
 import logging
 import time
-from typing import List, cast, Any, Optional
+from typing import List, cast
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
@@ -15,18 +15,14 @@ from utils import retry_on_exception, get_positions
 class MomentumStrategy:
     """Class implementing momentum-based trading strategy."""
 
-    def __init__(self, trading_client: TradingClient, tickers: List[str],
-                 telegram_bot: Optional[Any] = None):
+    def __init__(self, trading_client: TradingClient):
         """Initialize strategy.
 
         Args:
             trading_client: Alpaca API client
-            tickers: List of tickers for trading
-            telegram_bot: Optional TelegramBot instance for error notifications
         """
         self.trading_client = trading_client
-        self.tickers = tickers
-        self.telegram_bot = telegram_bot
+        self.tickers = DataLoader.get_snp500_tickers()
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
@@ -36,15 +32,8 @@ class MomentumStrategy:
             List[str]: List of tickers with highest momentum
         """
         try:
-            data = DataLoader.load_market_data(self.tickers, period="1y", telegram_bot=self.telegram_bot)
+            data = DataLoader.load_market_data(self.tickers, period="1y")
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            # Send notification on data loading error
-            if self.telegram_bot:
-                error_str = str(exc)
-                self.telegram_bot.send_error_notification_sync(
-                    "Data Loading Failed",
-                    f"Error loading market data from yfinance:\n<code>{error_str}</code>"
-                )
             raise
 
         if data is None:
@@ -91,12 +80,6 @@ class MomentumStrategy:
                 len(failed_closures),
                 [(t, e.split('\n')[0]) for t, e in failed_closures]
             )
-            if self.telegram_bot:
-                self.telegram_bot.send_error_notification_sync(
-                    "Failed to Close Positions",
-                    f"Failed to close {len(failed_closures)} position(s):\n{error_details}",
-                    is_warning=True
-                )
 
     def open_positions(self, tickers: List[str],
                        cash_per_position: float) -> None:
@@ -141,12 +124,6 @@ class MomentumStrategy:
                 len(failed_opens),
                 [(t, e.split('\n')[0]) for t, e in failed_opens]
             )
-            if self.telegram_bot:
-                self.telegram_bot.send_error_notification_sync(
-                    "Failed to Open Positions",
-                    f"Failed to open {len(failed_opens)} position(s):\n{error_details}",
-                    is_warning=True
-                )
 
     def rebalance(self) -> None:
         """Rebalance portfolio."""

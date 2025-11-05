@@ -5,11 +5,18 @@ import numpy as np
 from strategy import MomentumStrategy
 
 
+@pytest.fixture(autouse=True)
+def mock_get_snp500_tickers():
+    """Mock DataLoader.get_snp500_tickers for all tests"""
+    with patch("strategy.DataLoader.get_snp500_tickers") as mock:
+        mock.return_value = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
+        yield mock
+
+
 @pytest.fixture
 def strategy(mock_trading_client):
     """Create MomentumStrategy instance"""
-    tickers = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
-    return MomentumStrategy(trading_client=mock_trading_client, tickers=tickers)
+    return MomentumStrategy(trading_client=mock_trading_client)
 
 
 def create_yfinance_dataframe(tickers):
@@ -32,10 +39,9 @@ class TestMomentumStrategy:
         # We don't test actual return since it requires real yfinance data
 
     def test_get_signals_initialization(self, mock_trading_client):
-        """Should initialize with tickers list"""
-        tickers = ["AAPL", "GOOGL"]
-        strat = MomentumStrategy(trading_client=mock_trading_client, tickers=tickers)
-        assert strat.tickers == tickers
+        """Should initialize with tickers from DataLoader"""
+        strat = MomentumStrategy(trading_client=mock_trading_client)
+        assert strat.tickers == ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
         assert strat.trading_client == mock_trading_client
 
     def test_get_signals_key_error(self, strategy):

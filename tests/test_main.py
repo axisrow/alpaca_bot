@@ -259,49 +259,6 @@ class TestTradingBot:
 class TestTelegramBot:
     """Test TelegramBot class"""
 
-    def test_send_error_notification_sync(self, mock_env_vars, mock_trading_client):
-        """Should send error notification to admins"""
-        from bot import TradingBot, TelegramBot
-        from unittest.mock import AsyncMock, patch
-
-        with patch("bot.TradingClient", return_value=mock_trading_client):
-            with patch("bot.load_dotenv"):
-                with patch("bot.Bot"):
-                    with patch("bot.ADMIN_IDS", [123, 456]):
-                        trading_bot = TradingBot()
-                        telegram_bot = TelegramBot(trading_bot)
-                        telegram_bot.bot.send_message = AsyncMock()
-
-                        # Call sync wrapper
-                        telegram_bot.send_error_notification_sync(
-                            "Test Error", "This is a test error"
-                        )
-
-                        # Verify send_message was called for each admin
-                        assert telegram_bot.bot.send_message.called
-
-    def test_send_error_notification_sync_warning(self, mock_env_vars, mock_trading_client):
-        """Should send warning notification with correct icon"""
-        from bot import TradingBot, TelegramBot
-        from unittest.mock import AsyncMock, patch
-
-        with patch("bot.TradingClient", return_value=mock_trading_client):
-            with patch("bot.load_dotenv"):
-                with patch("bot.Bot"):
-                    with patch("bot.ADMIN_IDS", [123]):
-                        trading_bot = TradingBot()
-                        telegram_bot = TelegramBot(trading_bot)
-                        telegram_bot.bot.send_message = AsyncMock()
-
-                        # Call with warning=True
-                        telegram_bot.send_error_notification_sync(
-                            "Test Warning", "This is a warning", is_warning=True
-                        )
-
-                        # Verify warning icon in message
-                        call_args = telegram_bot.bot.send_message.call_args
-                        assert "⚠️" in call_args[1]["text"] or "⚠️" in str(call_args)
-
     def test_execute_rebalance_success(self, mock_env_vars, mock_trading_client,
                                        mock_data_loader):
         """Should execute rebalance successfully"""
@@ -319,29 +276,3 @@ class TestTelegramBot:
 
                 # Verify flag was written
                 bot.rebalance_flag.write_flag.assert_called_once()
-
-    def test_execute_rebalance_error_notification(self, mock_env_vars, mock_trading_client):
-        """Should send error notification on rebalance failure"""
-        from bot import TradingBot, TelegramBot
-        from unittest.mock import patch, AsyncMock
-
-        with patch("bot.TradingClient", return_value=mock_trading_client):
-            with patch("bot.load_dotenv"):
-                with patch("bot.Bot"):
-                    with patch("bot.ADMIN_IDS", [123]):
-                        trading_bot = TradingBot()
-                        telegram_bot = TelegramBot(trading_bot)
-                        trading_bot.telegram_bot = telegram_bot
-                        telegram_bot.bot.send_message = AsyncMock()
-
-                        # Mock strategy.rebalance to raise exception
-                        trading_bot.portfolio_manager.strategy.rebalance = MagicMock(
-                            side_effect=ValueError("Test error")
-                        )
-
-                        # Execute rebalance should raise after notification
-                        with pytest.raises(ValueError):
-                            trading_bot.execute_rebalance()
-
-                        # Verify error notification was sent
-                        assert telegram_bot.bot.send_message.called

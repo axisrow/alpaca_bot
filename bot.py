@@ -18,7 +18,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from config import snp500_tickers, TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT
+from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT
 from handlers import setup_router
 from strategy import MomentumStrategy
 from utils import get_positions
@@ -35,6 +35,61 @@ logging.basicConfig(
 
 # New York timezone constant
 NY_TIMEZONE = pytz.timezone('America/New_York')
+
+
+class TelegramLoggingHandler(logging.Handler):
+    """Custom logging handler that sends ERROR logs to Telegram admins."""
+
+    def __init__(self, bot: Bot, loop: asyncio.AbstractEventLoop):
+        """Initialize handler.
+
+        Args:
+            bot: Aiogram Bot instance
+            loop: Main event loop
+        """
+        super().__init__()
+        self.bot = bot
+        self.loop = loop
+        self.setLevel(logging.ERROR)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Send ERROR log record to admins via Telegram.
+
+        Args:
+            record: Log record
+        """
+        if not ADMIN_IDS:
+            return
+
+        try:
+            log_message = self.format(record)
+            message = f"🚨 <b>Error</b>\n\n<code>{log_message}</code>"
+
+            # Schedule sending on main event loop
+            asyncio.run_coroutine_threadsafe(
+                self._send_to_admins(message),
+                self.loop
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Silently ignore errors to prevent infinite loops
+            pass
+
+    async def _send_to_admins(self, message: str) -> None:
+        """Send message to all admin IDs.
+
+        Args:
+            message: Message text to send
+        """
+        for admin_id in ADMIN_IDS:
+            try:
+                await self.bot.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                # Silently ignore - don't log to prevent infinite loops
+                pass
 
 
 @dataclass
@@ -185,11 +240,7 @@ class PortfolioManager:
         """
         self.trading_client = trading_client
         self.telegram_bot = telegram_bot
-        self.strategy = MomentumStrategy(
-            self.trading_client,
-            snp500_tickers,
-            telegram_bot=telegram_bot
-        )
+        self.strategy = MomentumStrategy(self.trading_client)
 
     def set_telegram_bot(self, telegram_bot: Any) -> None:
         """Set telegram bot instance for notifications.
@@ -198,7 +249,6 @@ class PortfolioManager:
             telegram_bot: TelegramBot instance
         """
         self.telegram_bot = telegram_bot
-        self.strategy.telegram_bot = telegram_bot
 
     def get_current_positions(self) -> Dict[str, float]:
         """Get current positions.
@@ -769,6 +819,13 @@ async def main() -> None:
     # Set reference to Telegram bot in trading bot
     trading_bot.set_telegram_bot(telegram_bot)
 
+    # Get reference to main event loop
+    loop = asyncio.get_running_loop()
+
+    # Add Telegram logging handler for ERROR logs
+    telegram_handler = TelegramLoggingHandler(telegram_bot.bot, loop)
+    logging.getLogger().addHandler(telegram_handler)
+
     # Start trading bot (starts scheduler)
     trading_bot.start()
 
@@ -779,7 +836,6 @@ async def main() -> None:
     telegram_task = asyncio.create_task(telegram_bot.start())
 
     # Setup signal handlers
-    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig,

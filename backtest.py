@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from alpaca.trading.enums import OrderSide
 
-from config import snp500_tickers
 from data_loader import DataLoader
 from strategy import MomentumStrategy
 
@@ -244,6 +243,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
     # ---------------------------
     # LOAD AND PREPARE DATA
     # ---------------------------
+    snp500_tickers = DataLoader.get_snp500_tickers()
     data_start = START_DATE - timedelta(days=370)
     logging.info("Loading historical data from data_loader...")
     data = DataLoader.load_market_data(snp500_tickers,
