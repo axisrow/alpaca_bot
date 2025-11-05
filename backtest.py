@@ -252,6 +252,10 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
                        group_by='ticker',
                        progress=False)
 
+    if data is None:
+        logging.error("Failed to download data from yfinance.")
+        return
+
     # Extract 'Close' data for each ticker
     close_data = {}
     for ticker in snp500_tickers:
@@ -278,7 +282,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-statements
 
     trading_dates = prices.index
     rebalancing_dates = (
-        trading_dates[trading_dates >= START_DATE]
+        trading_dates[trading_dates >= pd.Timestamp(START_DATE)]
         .to_series()
         .resample(REBALANCING_FREQUENCY)
         .last()

@@ -31,6 +31,7 @@ def retry_on_exception(
                         raise
                     logging.warning("Attempt %d failed: %s", attempt, exc)
                     time.sleep(delay)
+            raise RuntimeError(f"Unexpected: retry loop completed without returning or raising")
         return wrapper
     return decorator
 

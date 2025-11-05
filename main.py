@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import pytz
 from aiogram import Bot, Dispatcher
@@ -452,7 +452,7 @@ class TradingBot:
 
         return NY_TIMEZONE.localize(datetime.combine(next_date, dt_time(10, 0)))
 
-    def get_rebalance_preview(self) -> Dict[str, object]:
+    def get_rebalance_preview(self) -> Dict[str, Any]:
         """Get a preview of what would happen in rebalancing (dry-run).
 
         Returns:
