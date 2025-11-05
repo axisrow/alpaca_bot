@@ -1,10 +1,13 @@
 """Module with Telegram bot command handlers."""
 import logging
+from pathlib import Path
 
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
+from config import ADMIN_IDS
+from data_loader import DataLoader
 from utils import telegram_handler
 
 
@@ -40,7 +43,8 @@ def setup_router(trading_bot):
             "/info - Bot information\n"
             "/portfolio - Portfolio status\n"
             "/stats - Trading statistics\n"
-            "/settings - Bot settings"
+            "/settings - Bot settings\n"
+            "/clear - Clear cache (admin only)"
         )
 
     @router.message(Command("check_rebalance"))
@@ -202,6 +206,40 @@ def setup_router(trading_bot):
             f"- Number of positions: {settings.get('positions_count', 0)}\n"
             f"- Mode: {settings.get('mode', 'not set')}"
         )
+        await message.answer(msg)
+
+    @router.message(Command("clear"))
+    @telegram_handler("❌ Error clearing cache")
+    async def cmd_clear_cache(message: Message):
+        """Handle /clear command (admin only)."""
+        # Check if user is admin
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ This command is only available to administrators")
+            return
+
+        # Get cache file info before deletion
+        cache_file = Path("data/cache.pkl")
+        cache_size = 0
+
+        if cache_file.exists():
+            cache_size = cache_file.stat().st_size
+
+        # Clear cache
+        DataLoader.clear_cache()
+
+        # Format size in human-readable format
+        if cache_size > 0:
+            if cache_size > 1024 * 1024:
+                size_str = f"{cache_size / (1024 * 1024):.2f} MB"
+            elif cache_size > 1024:
+                size_str = f"{cache_size / 1024:.2f} KB"
+            else:
+                size_str = f"{cache_size} B"
+
+            msg = f"✅ Cache cleared successfully\n\n📊 Freed: {size_str}"
+        else:
+            msg = "✅ Cache was already empty"
+
         await message.answer(msg)
 
     @router.message(F.text.lower().in_(["да", "yes", "y"]))

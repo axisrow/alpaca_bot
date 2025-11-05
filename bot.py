@@ -692,6 +692,7 @@ class TelegramBot:
             BotCommand(command="stats", description="Trading statistics"),
             BotCommand(command="settings", description="Bot settings"),
             BotCommand(command="check_rebalance", description="Days until rebalancing"),
+            BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
         await self.dp.start_polling(self.bot)
 
