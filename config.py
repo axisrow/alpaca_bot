@@ -19,7 +19,7 @@ ADMIN_IDS = [169675602, 7035744629]
 REBALANCE_INTERVAL_DAYS = 22
 
 # Custom tickers to add to S&P 500 list
-CUSTOM_TICKERS = ['RGTI', 'QBTS', 'QUBT', 'HHDJF123']
+CUSTOM_TICKERS = ['RGTI', 'QBTS', 'QUBT']
 
 snp500_tickers = ['WBA', 'MMM', 'AOS', 'ABT', 'ABBV', 'ACN', 'ADBE', 'AMD', 'AES', 'AFL', 'A']
 
