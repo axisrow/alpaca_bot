@@ -18,7 +18,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT, STRATEGIES, SNP500_TICKERS, CUSTOM_TICKERS, MEDIUM_TICKERS
+from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT, SNP500_TICKERS, CUSTOM_TICKERS, MEDIUM_TICKERS
 from data_loader import DataLoader
 from handlers import setup_router
 from strategies.paper_low import PaperLowStrategy
@@ -301,17 +301,24 @@ class TradingBot:
         self.awaiting_rebalance_confirmation = False  # Flag for pending confirmation
 
     def _initialize_strategies(self) -> None:
-        """Initialize all enabled strategies from config."""
-        for strategy_name, config in STRATEGIES.items():
-            if not config.get('enabled', False):
+        """Initialize all enabled trading strategies."""
+        strategies_list = [
+            ('paper_low', PaperLowStrategy),
+            ('paper_medium', PaperMediumStrategy),
+            ('paper_high', PaperHighStrategy),
+            ('live', LiveStrategy)
+        ]
+
+        for strategy_name, strategy_class in strategies_list:
+            if not strategy_class.ENABLED:
                 logging.info("Strategy %s is disabled, skipping", strategy_name)
                 continue
 
             try:
-                # Create trading client
-                api_key = config.get('api_key')
-                secret_key = config.get('secret_key')
-                paper = config.get('paper', True)
+                # Create trading client using credentials from strategy class
+                api_key = strategy_class.API_KEY
+                secret_key = strategy_class.SECRET_KEY
+                paper = strategy_class.PAPER
 
                 if not all([api_key, secret_key]):
                     logging.error("Missing API keys for strategy %s", strategy_name)
@@ -325,43 +332,29 @@ class TradingBot:
                     url_override=url_override
                 )
 
-                # Load tickers for this strategy
-                tickers = self._get_tickers_for_strategy(strategy_name)
+                # Determine ticker list based on strategy configuration
+                if strategy_class.TICKERS == 'snp500_only':
+                    # paper_low uses only SNP500 + CUSTOM
+                    tickers = list(set(SNP500_TICKERS + CUSTOM_TICKERS))
+                else:
+                    # paper_medium, paper_high, live use all available tickers (SNP500 + MEDIUM + CUSTOM)
+                    tickers = DataLoader.get_snp500_tickers()
 
                 # Create strategy instance
-                if strategy_name == 'paper_low':
-                    strategy = PaperLowStrategy(
-                        trading_client,
-                        tickers,
-                        config.get('top_count', 10)
-                    )
-                elif strategy_name == 'paper_medium':
-                    strategy = PaperMediumStrategy(
-                        trading_client,
-                        tickers,
-                        config.get('top_count', 50)
-                    )
-                elif strategy_name == 'paper_high':
-                    strategy = PaperHighStrategy(
-                        trading_client,
-                        tickers,
-                        config.get('top_count', 50)
-                    )
-                elif strategy_name == 'live':
-                    strategy = LiveStrategy(
-                        trading_client,
-                        tickers,
-                        config.get('top_count', 10)
-                    )
-                else:
-                    logging.warning("Unknown strategy type: %s", strategy_name)
-                    continue
+                strategy = strategy_class(
+                    trading_client=trading_client,
+                    tickers=tickers,
+                    top_count=strategy_class.TOP_COUNT
+                )
 
                 self.strategies[strategy_name] = {
                     'client': trading_client,
                     'strategy': strategy,
-                    'config': config,
-                    'enabled': True
+                    'enabled': True,
+                    'config': {
+                        'paper': paper,
+                        'top_count': strategy_class.TOP_COUNT
+                    }
                 }
                 logging.info("Strategy %s initialized successfully", strategy_name)
 
@@ -372,28 +365,6 @@ class TradingBot:
                     exc,
                     exc_info=True
                 )
-
-    def _get_tickers_for_strategy(self, strategy_name: str) -> list:
-        """Get ticker list for specific strategy.
-
-        Args:
-            strategy_name: Name of the strategy
-
-        Returns:
-            list: List of tickers
-        """
-        # All data is loaded once (SNP500 + MEDIUM + CUSTOM)
-        all_tickers = DataLoader.get_snp500_tickers()
-
-        # Filter tickers per strategy
-        if strategy_name == 'paper_low':
-            # paper_low uses only SNP500 + CUSTOM
-            tickers = list(set(SNP500_TICKERS + CUSTOM_TICKERS))
-        else:
-            # paper_medium and live use all available tickers (SNP500 + MEDIUM + CUSTOM)
-            tickers = all_tickers
-
-        return tickers
 
     def set_telegram_bot(self, telegram_bot: 'TelegramBot') -> None:
         """Set reference to Telegram bot for notifications.

@@ -1,4 +1,4 @@
-"""Momentum strategy for paper_high (top-50 S&P 500 + HIGH tickers)."""
+"""Momentum strategy for paper_high (top-50 live trading)."""
 import logging
 import time
 from typing import List, cast
@@ -8,12 +8,21 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
+import config
 from data_loader import DataLoader
 from utils import retry_on_exception, get_positions
 
 
 class PaperHighStrategy:
     """Class implementing momentum-based trading strategy for paper_high (top-50)."""
+
+    # Strategy configuration
+    API_KEY = config.ALPACA_API_KEY_HIGH
+    SECRET_KEY = config.ALPACA_SECRET_KEY_HIGH
+    PAPER = False
+    TOP_COUNT = 50
+    ENABLED = False
+    TICKERS = 'all'  # SNP500 + MEDIUM + CUSTOM tickers
 
     def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 50):
         """Initialize strategy.
@@ -74,10 +83,6 @@ class PaperHighStrategy:
                 failed_closures.append((ticker, str(exc)))
 
         if failed_closures:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_closures
-            ])
             logging.warning(
                 "Failed to close %d position(s): %s",
                 len(failed_closures),
@@ -118,10 +123,6 @@ class PaperHighStrategy:
                 failed_opens.append((ticker, str(exc)))
 
         if failed_opens:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_opens
-            ])
             logging.warning(
                 "Failed to open %d position(s): %s",
                 len(failed_opens),

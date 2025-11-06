@@ -8,14 +8,23 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
+import config
 from data_loader import DataLoader
 from utils import retry_on_exception, get_positions
 
 
 class PaperLowStrategy:
-    """Class implementing momentum-based trading strategy for paper_low (top-10)."""
+    """Class implementing momentum-based trading strategy for paper_low (top-50)."""
 
-    def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 10):
+    # Strategy configuration
+    API_KEY = config.ALPACA_API_KEY_LOW
+    SECRET_KEY = config.ALPACA_SECRET_KEY_LOW
+    PAPER = True
+    TOP_COUNT = 50
+    ENABLED = True
+    TICKERS = 'snp500_only'  # SNP500 + CUSTOM tickers
+
+    def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 50):
         """Initialize strategy.
 
         Args:
@@ -74,10 +83,6 @@ class PaperLowStrategy:
                 failed_closures.append((ticker, str(exc)))
 
         if failed_closures:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_closures
-            ])
             logging.warning(
                 "Failed to close %d position(s): %s",
                 len(failed_closures),
@@ -118,10 +123,6 @@ class PaperLowStrategy:
                 failed_opens.append((ticker, str(exc)))
 
         if failed_opens:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_opens
-            ])
             logging.warning(
                 "Failed to open %d position(s): %s",
                 len(failed_opens),

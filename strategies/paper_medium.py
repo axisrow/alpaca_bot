@@ -1,4 +1,4 @@
-"""Momentum strategy for paper_medium (top-50 S&P 500 + custom tickers)."""
+"""Momentum strategy for paper_medium (top-10 S&P 500 + all tickers)."""
 import logging
 import time
 from typing import List, cast
@@ -8,14 +8,23 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
+import config
 from data_loader import DataLoader
 from utils import retry_on_exception, get_positions
 
 
 class PaperMediumStrategy:
-    """Class implementing momentum-based trading strategy for paper_medium (top-50)."""
+    """Class implementing momentum-based trading strategy for paper_medium (top-10)."""
 
-    def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 50):
+    # Strategy configuration
+    API_KEY = config.ALPACA_API_KEY_MEDIUM
+    SECRET_KEY = config.ALPACA_SECRET_KEY_MEDIUM
+    PAPER = True
+    TOP_COUNT = 10
+    ENABLED = True
+    TICKERS = 'snp500_only'  # SNP500 + CUSTOM tickers
+
+    def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 10):
         """Initialize strategy.
 
         Args:
@@ -74,10 +83,6 @@ class PaperMediumStrategy:
                 failed_closures.append((ticker, str(exc)))
 
         if failed_closures:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_closures
-            ])
             logging.warning(
                 "Failed to close %d position(s): %s",
                 len(failed_closures),
@@ -118,10 +123,6 @@ class PaperMediumStrategy:
                 failed_opens.append((ticker, str(exc)))
 
         if failed_opens:
-            error_details = "\n".join([
-                f"  • {ticker}: {error.split(chr(10))[0]}"
-                for ticker, error in failed_opens
-            ])
             logging.warning(
                 "Failed to open %d position(s): %s",
                 len(failed_opens),

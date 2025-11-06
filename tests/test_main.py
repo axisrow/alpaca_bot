@@ -195,10 +195,9 @@ class TestTradingBot:
 
         with patch("bot.TradingClient", return_value=mock_trading_client):
             with patch("bot.load_dotenv"):
-                with patch("bot.STRATEGIES", {}):
-                    bot = TradingBot()
-                    assert bot is not None
-                    assert hasattr(bot, 'strategies')
+                bot = TradingBot()
+                assert bot is not None
+                assert hasattr(bot, 'strategies')
 
     def test_perform_rebalance_skip_if_done_today(self, mock_env_vars, mock_trading_client):
         """Should skip rebalance if already done today"""

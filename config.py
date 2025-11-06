@@ -149,35 +149,3 @@ ALPACA_SECRET_KEY_LIVE = os.getenv("ALPACA_SECRET_KEY_LIVE", "")
 # Alpaca API keys for paper_high account
 ALPACA_API_KEY_HIGH = os.getenv("ALPACA_API_KEY_HIGH", "")
 ALPACA_SECRET_KEY_HIGH = os.getenv("ALPACA_SECRET_KEY_HIGH", "")
-
-# Strategy configurations
-STRATEGIES = {
-    'paper_low': {
-        'api_key': ALPACA_API_KEY_LOW,
-        'secret_key': ALPACA_SECRET_KEY_LOW,
-        'paper': True,
-        'top_count': 10,
-        'enabled': True
-    },
-    'paper_medium': {
-        'api_key': ALPACA_API_KEY_MEDIUM,
-        'secret_key': ALPACA_SECRET_KEY_MEDIUM,
-        'paper': True,
-        'top_count': 50,
-        'enabled': True
-    },
-    'paper_high': {
-        'api_key': ALPACA_API_KEY_HIGH,
-        'secret_key': ALPACA_SECRET_KEY_HIGH,
-        'paper': False,
-        'top_count': 50,
-        'enabled': True
-    },
-    'live': {
-        'api_key': ALPACA_API_KEY_LIVE,
-        'secret_key': ALPACA_SECRET_KEY_LIVE,
-        'paper': False,
-        'top_count': 10,
-        'enabled': False
-    }
-}
