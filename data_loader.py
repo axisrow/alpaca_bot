@@ -9,7 +9,7 @@ from typing import Optional
 import pandas as pd
 import yfinance as yf
 
-from config import ENVIRONMENT, snp500_tickers, CUSTOM_TICKERS
+from config import ENVIRONMENT, SNP500_TICKERS, MEDIUM_TICKERS, HIGH_TICKERS, CUSTOM_TICKERS
 
 logger = logging.getLogger(__name__)
 
@@ -150,38 +150,16 @@ class DataLoader:
 
     @staticmethod
     def get_snp500_tickers() -> list[str]:
-        """Get list of S&P 500 tickers from Wikipedia with fallback to config.
+        """Get combined list of S&P 500 + MEDIUM tickers for full data load.
 
         Returns:
-            List of S&P 500 ticker symbols
+            List of S&P 500 + MEDIUM + custom ticker symbols
         """
-        try:
-            url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                              'AppleWebKit/537.36 (KHTML, like Gecko)'
-            }
-            df = pd.read_html(
-                url,
-                attrs={'id': 'constituents'},
-                storage_options=headers
-            )[0]
-            tickers = df['Symbol'].tolist()
-            # Replace dots with dashes for Yahoo Finance compatibility
-            # Example: BRK.B -> BRK-B, BF.B -> BF-B
-            tickers = [ticker.replace('.', '-') for ticker in tickers]
-            logger.info(f"Loaded {len(tickers)} S&P 500 tickers from Wikipedia")
-            # Add custom tickers
-            combined = list(set(tickers + CUSTOM_TICKERS))
-            logger.info(f"Added {len(CUSTOM_TICKERS)} custom tickers. Total: {len(combined)}")
-            return combined
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to load tickers from Wikipedia: %s. Using fallback from config.",
-                exc
-            )
-            logger.info(f"Using {len(snp500_tickers)} tickers from config")
-            # Add custom tickers to fallback list
-            combined = list(set(snp500_tickers + CUSTOM_TICKERS))
-            logger.info(f"Added {len(CUSTOM_TICKERS)} custom tickers. Total: {len(combined)}")
-            return combined
+        # Combine all tickers for one-time full data load
+        combined = list(set(SNP500_TICKERS + HIGH_TICKERS))
+        logger.info(
+            f"Loaded {len(SNP500_TICKERS)} SNP500 tickers, "
+            f"{len(MEDIUM_TICKERS)} MEDIUM tickers, "
+            f"{len(CUSTOM_TICKERS)} custom tickers. Total: {len(combined)}"
+        )
+        return combined

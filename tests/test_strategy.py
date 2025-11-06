@@ -2,21 +2,22 @@ import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
-from strategy import MomentumStrategy
+from strategies.paper_low import PaperLowStrategy
 
 
 @pytest.fixture(autouse=True)
 def mock_get_snp500_tickers():
     """Mock DataLoader.get_snp500_tickers for all tests"""
-    with patch("strategy.DataLoader.get_snp500_tickers") as mock:
+    with patch("strategies.paper_low.DataLoader.get_snp500_tickers") as mock:
         mock.return_value = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
         yield mock
 
 
 @pytest.fixture
 def strategy(mock_trading_client):
-    """Create MomentumStrategy instance"""
-    return MomentumStrategy(trading_client=mock_trading_client)
+    """Create PaperLowStrategy instance"""
+    tickers = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
+    return PaperLowStrategy(trading_client=mock_trading_client, tickers=tickers, top_count=10)
 
 
 def create_yfinance_dataframe(tickers):
@@ -39,9 +40,11 @@ class TestMomentumStrategy:
         # We don't test actual return since it requires real yfinance data
 
     def test_get_signals_initialization(self, mock_trading_client):
-        """Should initialize with tickers from DataLoader"""
-        strat = MomentumStrategy(trading_client=mock_trading_client)
-        assert strat.tickers == ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
+        """Should initialize with tickers and top_count"""
+        tickers = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA"]
+        strat = PaperLowStrategy(trading_client=mock_trading_client, tickers=tickers, top_count=10)
+        assert strat.tickers == tickers
+        assert strat.top_count == 10
         assert strat.trading_client == mock_trading_client
 
     def test_get_signals_key_error(self, strategy):

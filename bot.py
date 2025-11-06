@@ -18,9 +18,13 @@ from alpaca.trading.requests import GetOrdersRequest
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT
+from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT, STRATEGIES, SNP500_TICKERS, CUSTOM_TICKERS, MEDIUM_TICKERS
+from data_loader import DataLoader
 from handlers import setup_router
-from strategy import MomentumStrategy
+from strategies.paper_low import PaperLowStrategy
+from strategies.paper_medium import PaperMediumStrategy
+from strategies.paper_high import PaperHighStrategy
+from strategies.live import LiveStrategy
 from utils import get_positions
 
 # Configure logging
@@ -66,10 +70,12 @@ class TelegramLoggingHandler(logging.Handler):
             message = f"🚨 <b>Error</b>\n\n<code>{log_message}</code>"
 
             # Schedule sending on main event loop
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 self._send_to_admins(message),
                 self.loop
             )
+            # Add callback to handle any exceptions from the coroutine
+            future.add_done_callback(self._handle_send_result)
         except Exception:  # pylint: disable=broad-exception-caught
             # Silently ignore errors to prevent infinite loops
             pass
@@ -90,6 +96,19 @@ class TelegramLoggingHandler(logging.Handler):
             except Exception:  # pylint: disable=broad-exception-caught
                 # Silently ignore - don't log to prevent infinite loops
                 pass
+
+    @staticmethod
+    def _handle_send_result(future: Any) -> None:
+        """Handle result of sending admin message.
+
+        Args:
+            future: The future object from run_coroutine_threadsafe
+        """
+        try:
+            future.result()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Silently ignore - don't log to prevent infinite loops
+            pass
 
 
 @dataclass
@@ -263,15 +282,118 @@ class TradingBot:
     """Main trading bot class."""
 
     def __init__(self):
-        """Initialize trading bot."""
-        self._load_environment()
-        self.trading_client = self._setup_trading_client()
-        self.market_schedule = MarketSchedule(self.trading_client)
-        self.portfolio_manager = PortfolioManager(self.trading_client)
+        """Initialize trading bot with multiple strategies."""
+        load_dotenv()
+        self.strategies = {}  # Dict[str, Dict[str, Any]]
+        self._initialize_strategies()
+        # Use first enabled strategy's trading_client for market schedule
+        first_client = next(
+            (data['client'] for data in self.strategies.values() if data.get('enabled')),
+            None
+        )
+        if not first_client:
+            logging.error("No enabled strategies configured!")
+            sys.exit(1)
+        self.market_schedule = MarketSchedule(first_client)
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
         self.telegram_bot = None  # Will be set after TelegramBot creation
         self.awaiting_rebalance_confirmation = False  # Flag for pending confirmation
+
+    def _initialize_strategies(self) -> None:
+        """Initialize all enabled strategies from config."""
+        for strategy_name, config in STRATEGIES.items():
+            if not config.get('enabled', False):
+                logging.info("Strategy %s is disabled, skipping", strategy_name)
+                continue
+
+            try:
+                # Create trading client
+                api_key = config.get('api_key')
+                secret_key = config.get('secret_key')
+                paper = config.get('paper', True)
+
+                if not all([api_key, secret_key]):
+                    logging.error("Missing API keys for strategy %s", strategy_name)
+                    continue
+
+                url_override = "https://paper-api.alpaca.markets" if paper else "https://api.alpaca.markets"
+                trading_client = TradingClient(
+                    api_key=api_key,
+                    secret_key=secret_key,
+                    paper=paper,
+                    url_override=url_override
+                )
+
+                # Load tickers for this strategy
+                tickers = self._get_tickers_for_strategy(strategy_name)
+
+                # Create strategy instance
+                if strategy_name == 'paper_low':
+                    strategy = PaperLowStrategy(
+                        trading_client,
+                        tickers,
+                        config.get('top_count', 10)
+                    )
+                elif strategy_name == 'paper_medium':
+                    strategy = PaperMediumStrategy(
+                        trading_client,
+                        tickers,
+                        config.get('top_count', 50)
+                    )
+                elif strategy_name == 'paper_high':
+                    strategy = PaperHighStrategy(
+                        trading_client,
+                        tickers,
+                        config.get('top_count', 50)
+                    )
+                elif strategy_name == 'live':
+                    strategy = LiveStrategy(
+                        trading_client,
+                        tickers,
+                        config.get('top_count', 10)
+                    )
+                else:
+                    logging.warning("Unknown strategy type: %s", strategy_name)
+                    continue
+
+                self.strategies[strategy_name] = {
+                    'client': trading_client,
+                    'strategy': strategy,
+                    'config': config,
+                    'enabled': True
+                }
+                logging.info("Strategy %s initialized successfully", strategy_name)
+
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error(
+                    "Error initializing strategy %s: %s",
+                    strategy_name,
+                    exc,
+                    exc_info=True
+                )
+
+    def _get_tickers_for_strategy(self, strategy_name: str) -> list:
+        """Get ticker list for specific strategy.
+
+        Args:
+            strategy_name: Name of the strategy
+
+        Returns:
+            list: List of tickers
+        """
+        # All data is loaded once (SNP500 + MEDIUM + CUSTOM)
+        all_tickers = DataLoader.get_snp500_tickers()
+
+        # Filter tickers per strategy
+        if strategy_name == 'paper_low':
+            # paper_low uses only SNP500 + CUSTOM
+            tickers = list(set(SNP500_TICKERS + CUSTOM_TICKERS))
+        else:
+            # paper_medium and live use all available tickers (SNP500 + MEDIUM + CUSTOM)
+            tickers = all_tickers
+
+        return tickers
 
     def set_telegram_bot(self, telegram_bot: 'TelegramBot') -> None:
         """Set reference to Telegram bot for notifications.
@@ -280,31 +402,6 @@ class TradingBot:
             telegram_bot: TelegramBot instance
         """
         self.telegram_bot = telegram_bot
-        self.portfolio_manager.set_telegram_bot(telegram_bot)
-
-    def _load_environment(self) -> None:
-        """Load environment variables."""
-        load_dotenv()
-        self.api_key = os.getenv("ALPACA_API_KEY")
-        self.secret_key = os.getenv("ALPACA_SECRET_KEY")
-        self.base_url = "https://paper-api.alpaca.markets"
-
-        if not all([self.api_key, self.secret_key]):
-            logging.error("Missing API keys!")
-            sys.exit(1)
-
-    def _setup_trading_client(self) -> TradingClient:
-        """Create trading client.
-
-        Returns:
-            TradingClient: Configured Alpaca client
-        """
-        return TradingClient(
-            api_key=self.api_key,
-            secret_key=self.secret_key,
-            paper=True,
-            url_override=self.base_url
-        )
 
     def _check_rebalance_conditions(self) -> bool:
         """Check if rebalance conditions are met.
@@ -330,12 +427,28 @@ class TradingBot:
         return True
 
     def execute_rebalance(self) -> None:
-        """Execute portfolio rebalancing."""
+        """Execute portfolio rebalancing for all strategies."""
         try:
-            logging.info("Performing portfolio rebalancing...")
-            self.portfolio_manager.strategy.rebalance()
+            logging.info("Performing portfolio rebalancing for all strategies...")
+
+            for strategy_name, strategy_data in self.strategies.items():
+                if not strategy_data.get('enabled'):
+                    continue
+
+                try:
+                    logging.info("Rebalancing strategy: %s", strategy_name)
+                    strategy_data['strategy'].rebalance()
+                    logging.info("Strategy %s rebalanced successfully", strategy_name)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logging.error(
+                        "Error rebalancing %s: %s",
+                        strategy_name,
+                        exc,
+                        exc_info=True
+                    )
+
             self.rebalance_flag.write_flag()
-            logging.info("Rebalancing completed.")
+            logging.info("All strategies rebalanced successfully")
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Rebalance failed: %s", exc, exc_info=True)
             if self.telegram_bot:
@@ -414,50 +527,99 @@ class TradingBot:
             self.scheduler.shutdown(wait=True)
             logging.info("Scheduler stopped")
 
-    def get_portfolio_status(self) -> Tuple[Dict[str, float], object, float]:
-        """Get detailed portfolio data.
+    def get_portfolio_status(self) -> Tuple[Dict[str, Dict[str, Any]], float, float]:
+        """Get detailed portfolio data from all strategies.
 
         Returns:
-            Tuple: (positions, account, P&L)
+            Tuple: (positions_by_strategy, total_portfolio_value, total_pnl)
         """
         try:
-            positions = self.portfolio_manager.get_current_positions()
-            account = self.trading_client.get_account()
-            all_positions = self.trading_client.get_all_positions()
-            account_pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in all_positions)
+            positions_by_strategy = {}
+            total_portfolio_value = 0.0
+            total_pnl = 0.0
 
-            return positions, account, account_pnl
+            for strategy_name, strategy_data in self.strategies.items():
+                if not strategy_data.get('enabled'):
+                    continue
+
+                try:
+                    client = strategy_data['client']
+
+                    # Get positions
+                    all_positions = client.get_all_positions()
+                    positions = {pos.symbol: float(pos.qty) for pos in all_positions}
+
+                    # Get account
+                    account = client.get_account()
+                    portfolio_value = float(getattr(account, 'portfolio_value', 0))
+
+                    # Calculate P&L
+                    pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in all_positions)
+
+                    positions_by_strategy[strategy_name] = {
+                        'positions': positions,
+                        'portfolio_value': portfolio_value,
+                        'pnl': pnl,
+                        'all_positions': {p.symbol: p for p in all_positions}
+                    }
+
+                    total_portfolio_value += portfolio_value
+                    total_pnl += pnl
+
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logging.error("Error retrieving data for %s: %s", strategy_name, exc)
+                    positions_by_strategy[strategy_name] = {
+                        'positions': {},
+                        'portfolio_value': 0.0,
+                        'pnl': 0.0,
+                        'all_positions': {}
+                    }
+
+            return positions_by_strategy, total_portfolio_value, total_pnl
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error retrieving portfolio data: %s", exc)
-            return {}, None, 0
+            return {}, 0.0, 0.0
 
     def get_trading_stats(self) -> Dict[str, float]:
-        """Get real trading statistics.
+        """Get real trading statistics from all strategies.
 
         Returns:
-            Dict[str, float]: Trading statistics
+            Dict[str, float]: Aggregated trading statistics
         """
         try:
-            # Get all trades for today
+            total_trades_today = 0
+            total_pnl = 0.0
+
             today = datetime.now(NY_TIMEZONE).replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
 
-            # Use GetOrdersRequest for filtering
-            request = GetOrdersRequest(
-                status=QueryOrderStatus.CLOSED,
-                after=today
-            )
-            trades = self.trading_client.get_orders(filter=request)
-            trades_today = len(trades)
+            for strategy_name, strategy_data in self.strategies.items():
+                if not strategy_data.get('enabled'):
+                    continue
 
-            # Calculate real P&L
-            positions = self.trading_client.get_all_positions()
-            total_pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in positions)
+                try:
+                    client = strategy_data['client']
+
+                    # Get trades for today
+                    request = GetOrdersRequest(
+                        status=QueryOrderStatus.CLOSED,
+                        after=today
+                    )
+                    trades = client.get_orders(filter=request)
+                    total_trades_today += len(trades)
+
+                    # Calculate P&L
+                    positions = client.get_all_positions()
+                    pnl = sum(float(getattr(pos, 'unrealized_pl', 0)) for pos in positions)
+                    total_pnl += pnl
+
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logging.error("Error retrieving stats for %s: %s", strategy_name, exc)
 
             return {
-                "trades_today": trades_today,
+                "trades_today": total_trades_today,
                 "pnl": total_pnl,
                 "win_rate": 0.0  # Simplified version, win_rate requires history analysis
             }
@@ -465,16 +627,28 @@ class TradingBot:
             logging.error("Error retrieving trading statistics: %s", exc)
             return {"trades_today": 0, "pnl": 0.0, "win_rate": 0.0}
 
-    def get_settings(self) -> Dict[str, object]:
+    def get_settings(self) -> Dict[str, Any]:
         """Get bot settings.
 
         Returns:
-            Dict[str, object]: Settings dictionary
+            Dict[str, Any]: Settings dictionary with all strategies
         """
+        strategies_info = {}
+
+        for strategy_name, strategy_data in self.strategies.items():
+            if not strategy_data.get('enabled'):
+                continue
+
+            config = strategy_data['config']
+            strategies_info[strategy_name] = {
+                'positions_count': config.get('top_count', 10),
+                'mode': 'Paper Trading' if config.get('paper', True) else 'Live Trading',
+                'enabled': True
+            }
+
         return {
             "rebalance_time": "10:00 NY",
-            "positions_count": 10,
-            "mode": "Paper Trading"
+            "strategies": strategies_info
         }
 
     def calculate_days_until_rebalance(self) -> int:
@@ -521,56 +695,69 @@ class TradingBot:
 
         return NY_TIMEZONE.localize(datetime.combine(next_date, dt_time(10, 0)))
 
-    def get_rebalance_preview(self) -> Dict[str, Any]:
-        """Get a preview of what would happen in rebalancing (dry-run).
+    def get_rebalance_preview(self) -> Dict[str, Dict[str, Any]]:
+        """Get a preview of what would happen in rebalancing (dry-run) for all strategies.
 
         Returns:
-            Dict[str, object]: Rebalance plan with current and planned positions
+            Dict[str, Dict]: Rebalance plan for each strategy
         """
-        try:
-            # Get current positions
-            current_positions = self.portfolio_manager.get_current_positions()
-            all_positions = self.trading_client.get_all_positions()
-            positions_dict = {p.symbol: p for p in all_positions}  # type: ignore
+        previews = {}
 
-            # Get account data
-            account = self.trading_client.get_account()
-            available_cash = float(getattr(account, 'cash', 0))
+        for strategy_name, strategy_data in self.strategies.items():
+            if not strategy_data.get('enabled'):
+                continue
 
-            # Get top 10 by momentum
-            top_tickers = self.portfolio_manager.strategy.get_signals()
+            client = strategy_data['client']
+            strategy = strategy_data['strategy']
 
-            # Calculate what would change
-            positions_to_close = list(set(current_positions.keys()) - set(top_tickers))
-            positions_to_open = list(set(top_tickers) - set(current_positions.keys()))
+            try:
+                # Get current positions
+                all_positions = client.get_all_positions()
+                current_positions = {pos.symbol: float(pos.qty) for pos in all_positions}
+                positions_dict = {p.symbol: p for p in all_positions}
 
-            # Calculate position size
-            position_size = 0.0
-            if positions_to_open and available_cash > 0:
-                position_size = available_cash / len(positions_to_open)
+                # Get account
+                account = client.get_account()
+                available_cash = float(getattr(account, 'cash', 0))
 
-            # Build response
-            return {
-                "current_positions": current_positions,
-                "positions_dict": positions_dict,
-                "top_tickers": top_tickers,
-                "positions_to_close": positions_to_close,
-                "positions_to_open": positions_to_open,
-                "available_cash": available_cash,
-                "position_size": position_size
-            }
+                # Get top N by momentum
+                top_tickers = strategy.get_signals()
 
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error previewing rebalance: %s", exc)
-            return {
-                "error": str(exc),
-                "current_positions": {},
-                "top_tickers": [],
-                "positions_to_close": [],
-                "positions_to_open": [],
-                "available_cash": 0.0,
-                "position_size": 0.0
-            }
+                # Calculate what would change
+                positions_to_close = list(set(current_positions.keys()) - set(top_tickers))
+                positions_to_open = list(set(top_tickers) - set(current_positions.keys()))
+
+                # Calculate position size
+                position_size = 0.0
+                if positions_to_open and available_cash > 0:
+                    position_size = available_cash / len(positions_to_open)
+
+                previews[strategy_name] = {
+                    "current_positions": current_positions,
+                    "positions_dict": positions_dict,
+                    "top_tickers": top_tickers,
+                    "top_count": strategy_data['config'].get('top_count', 10),
+                    "positions_to_close": positions_to_close,
+                    "positions_to_open": positions_to_open,
+                    "available_cash": available_cash,
+                    "position_size": position_size
+                }
+
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error("Error previewing rebalance for %s: %s", strategy_name, exc)
+                previews[strategy_name] = {
+                    "error": str(exc),
+                    "current_positions": {},
+                    "positions_dict": {},
+                    "top_tickers": [],
+                    "top_count": strategy_data['config'].get('top_count', 10),
+                    "positions_to_close": [],
+                    "positions_to_open": [],
+                    "available_cash": 0.0,
+                    "position_size": 0.0
+                }
+
+        return previews
 
 
 class TelegramBot:
@@ -640,11 +827,20 @@ class TelegramBot:
         if not is_open:
             message += f"💬 Reason: {reason}\n"
 
-        message += (
-            f"\n⚙️ Mode: {self.trading_bot.get_settings()['mode']}\n"
-            f"📅 Rebalance: {self.trading_bot.get_settings()['rebalance_time']}\n"
-            f"📈 Positions: {self.trading_bot.get_settings()['positions_count']}\n"
-        )
+        settings = self.trading_bot.get_settings()
+        message += f"\n📅 Rebalance: {settings['rebalance_time']}\n"
+
+        # Display all active strategies
+        if settings.get('strategies'):
+            message += "\n⚙️ <b>Active Strategies:</b>\n"
+            for strategy_name, strategy_info in settings['strategies'].items():
+                message += (
+                    f"  • <b>{strategy_name}</b>: "
+                    f"{strategy_info['mode']} "
+                    f"({strategy_info['positions_count']} positions)\n"
+                )
+        else:
+            message += "\n⚙️ No active strategies\n"
 
         await self._send_to_admins(message)
 
@@ -808,7 +1004,7 @@ class TelegramBot:
             BotCommand(command="check_rebalance", description="Days until rebalancing"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
-        await self.dp.start_polling(self.bot)
+        await self.dp.start_polling(self.bot, allowed_updates=None)
 
 
 async def main() -> None:

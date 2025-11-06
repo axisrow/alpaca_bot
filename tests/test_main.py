@@ -190,14 +190,15 @@ class TestTradingBot:
     """Test TradingBot class"""
 
     def test_trading_bot_init(self, mock_env_vars, mock_trading_client):
-        """Should initialize trading bot"""
+        """Should initialize trading bot with strategies"""
         from bot import TradingBot
 
         with patch("bot.TradingClient", return_value=mock_trading_client):
             with patch("bot.load_dotenv"):
-                bot = TradingBot()
-                assert bot is not None
-                assert bot.trading_client is not None
+                with patch("bot.STRATEGIES", {}):
+                    bot = TradingBot()
+                    assert bot is not None
+                    assert hasattr(bot, 'strategies')
 
     def test_perform_rebalance_skip_if_done_today(self, mock_env_vars, mock_trading_client):
         """Should skip rebalance if already done today"""

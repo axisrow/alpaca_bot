@@ -1,4 +1,5 @@
 """Module with Telegram bot command handlers."""
+import asyncio
 import logging
 from pathlib import Path
 
@@ -62,151 +63,178 @@ def setup_router(trading_bot):
     @router.message(Command("test_rebalance"))
     @telegram_handler("❌ Error running test rebalance")
     async def cmd_test_rebalance(message: Message):
-        """Handle /test_rebalance command (dry run)."""
-        preview = trading_bot.get_rebalance_preview()
+        """Handle /test_rebalance command (dry run for all strategies)."""
+        loading_msg = await message.answer("⏳ Загружаю данные для ребалансировки...")
+        previews = await asyncio.to_thread(trading_bot.get_rebalance_preview)
 
-        # Check for errors in preview
-        if "error" in preview:
-            raise ValueError(f"Rebalance preview error: {preview['error']}")
-
-        # Build response message
-        current_positions = preview.get("current_positions", {})
-        positions_dict = preview.get("positions_dict", {})
-        top_tickers = preview.get("top_tickers", [])
-        positions_to_close = preview.get("positions_to_close", [])
-        positions_to_open = preview.get("positions_to_open", [])
-        available_cash = preview.get("available_cash", 0.0)
-        position_size = preview.get("position_size", 0.0)
+        if not previews:
+            await loading_msg.delete()
+            raise ValueError("No rebalance preview available")
 
         msg = "📊 <b>Rebalance Preview (DRY RUN)</b>\n\n"
 
-        # Current positions
-        msg += "<b>📍 Current Positions:</b>\n"
-        if current_positions:
-            for symbol, qty in current_positions.items():
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
-                else:
-                    msg += f"  {symbol}: {float(qty):.2f} shares\n"
-        else:
-            msg += "  No open positions\n"
+        for strategy_name, preview in previews.items():
+            # Check for errors
+            if "error" in preview:
+                msg += f"<b>🔹 {strategy_name.upper()}:</b>\n"
+                msg += f"  ❌ Error: {preview['error']}\n\n"
+                continue
 
-        msg += "\n<b>🎯 Top 10 by Momentum:</b>\n"
-        for i, ticker in enumerate(top_tickers, 1):
-            msg += f"  {i}. {ticker}\n"
+            # Build response for this strategy
+            current_positions = preview.get("current_positions", {})
+            positions_dict = preview.get("positions_dict", {})
+            top_count = preview.get("top_count", 10)
+            top_tickers = preview.get("top_tickers", [])
+            positions_to_close = preview.get("positions_to_close", [])
+            positions_to_open = preview.get("positions_to_open", [])
+            available_cash = preview.get("available_cash", 0.0)
+            position_size = preview.get("position_size", 0.0)
 
-        msg += "\n<b>📉 Positions to Close:</b>\n"
-        if positions_to_close:
-            for symbol in positions_to_close:
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    msg += f"  ❌ {symbol} (${market_value:.2f})\n"
-                else:
-                    msg += f"  ❌ {symbol}\n"
-        else:
-            msg += "  None\n"
+            msg += f"<b>🔹 {strategy_name.upper()}</b>\n\n"
 
-        msg += "\n<b>📈 Positions to Open:</b>\n"
-        if positions_to_open:
-            for symbol in positions_to_open:
-                msg += f"  ✅ {symbol} (${position_size:.2f})\n"
-        else:
-            msg += "  None\n"
+            # Current positions
+            msg += "<b>📍 Current Positions:</b>\n"
+            if current_positions:
+                for symbol, qty in current_positions.items():
+                    pos_info = positions_dict.get(symbol)
+                    if pos_info:
+                        market_value = float(getattr(pos_info, 'market_value', 0))
+                        msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
+                    else:
+                        msg += f"  {symbol}: {float(qty):.2f} shares\n"
+            else:
+                msg += "  No open positions\n"
 
-        msg += "\n<b>💰 Summary:</b>\n"
-        msg += f"  Available cash: ${available_cash:.2f}\n"
-        msg += f"  Position size: ${position_size:.2f}\n"
-        msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
-        msg += "\n⚠️ <i>This is a DRY RUN - no trades executed</i>"
+            msg += f"\n<b>🎯 Top {top_count} by Momentum:</b>\n"
+            for i, ticker in enumerate(top_tickers, 1):
+                msg += f"  {i}. {ticker}\n"
 
+            msg += "\n<b>📉 Positions to Close:</b>\n"
+            if positions_to_close:
+                for symbol in positions_to_close:
+                    pos_info = positions_dict.get(symbol)
+                    if pos_info:
+                        market_value = float(getattr(pos_info, 'market_value', 0))
+                        msg += f"  ❌ {symbol} (${market_value:.2f})\n"
+                    else:
+                        msg += f"  ❌ {symbol}\n"
+            else:
+                msg += "  None\n"
+
+            msg += "\n<b>📈 Positions to Open:</b>\n"
+            if positions_to_open:
+                for symbol in positions_to_open:
+                    msg += f"  ✅ {symbol} (${position_size:.2f})\n"
+            else:
+                msg += "  None\n"
+
+            msg += "\n<b>💰 Summary:</b>\n"
+            msg += f"  Available cash: ${available_cash:.2f}\n"
+            msg += f"  Position size: ${position_size:.2f}\n"
+            msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
+            msg += "\n" + "─" * 40 + "\n\n"
+
+        msg += "⚠️ <i>This is a DRY RUN - no trades executed</i>"
+
+        await loading_msg.delete()
         await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("info"))
     async def show_info(message: Message):
         """Handle /info command."""
-        await message.answer(
-            "Automated trading bot for stock market trading.\n"
-            "Strategy: Momentum Trading\n"
-            "Rebalancing: daily at 10:00 (NY)\n"
-            "Uses Alpaca Markets API"
+        msg = (
+            "🤖 <b>Automated Trading Bot</b>\n\n"
+            "<b>Strategies:</b>\n"
+            "  • paper_low: Top-10 S&P 500 momentum\n"
+            "  • paper_medium: Top-50 S&P 500 momentum\n"
+            "  • paper_high: Top-50 S&P 500+HIGH momentum\n\n"
+            "<b>Rebalancing:</b> Daily at 10:00 AM (NY time)\n"
+            "<b>API:</b> Alpaca Markets\n"
         )
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("portfolio"))
     @telegram_handler("❌ Error retrieving portfolio data")
     async def show_portfolio(message: Message):
         """Handle /portfolio command."""
-        # Get portfolio data from TradingBot
-        positions, account, account_pnl = trading_bot.get_portfolio_status()
+        # Get portfolio data from TradingBot (by strategy)
+        loading_msg = await message.answer("⏳ Получаю данные портфеля...")
+        positions_by_strategy, total_value, total_pnl = await asyncio.to_thread(trading_bot.get_portfolio_status)
 
-        # Verify account data was retrieved correctly
-        if not account:
-            raise ValueError("Failed to retrieve account data")
+        if not positions_by_strategy:
+            await loading_msg.delete()
+            raise ValueError("Failed to retrieve portfolio data")
 
-        # Build message
-        msg = "Portfolio Status:\n\n"
+        msg = "📊 <b>Portfolio Status (All Strategies)</b>\n\n"
+        msg += f"<b>💼 Total Portfolio Value:</b> ${total_value:.2f}\n"
+        msg += f"<b>📈 Total P&L:</b> ${total_pnl:.2f}\n\n"
+        msg += "─" * 40 + "\n\n"
 
-        if positions:
-            all_positions = trading_bot.trading_client.get_all_positions()
-            positions_dict = {p.symbol: p for p in all_positions}
+        for strategy_name, data in positions_by_strategy.items():
+            positions = data['positions']
+            portfolio_value = data['portfolio_value']
+            pnl = data['pnl']
+            positions_dict = data['all_positions']
 
-            msg += "Positions:\n"
-            msg += "\n".join(
-                f"{symbol} – {float(qty):.2f} shares "
-                f"(${float(positions_dict[symbol].market_value):.2f})"
-                if symbol in positions_dict else
-                f"{symbol} – {float(qty):.2f} shares (no price data)"
-                for symbol, qty in positions.items()
-            )
-            msg += "\n"
-        else:
-            msg += "Positions: No open positions\n"
+            msg += f"<b>🔹 {strategy_name.upper()}</b>\n"
+            msg += f"Portfolio: ${portfolio_value:.2f} | P&L: ${pnl:.2f}\n\n"
 
-        msg += "\nPortfolio:\n"
-        msg += f"Total: {float(account.portfolio_value):.2f}\n"
-        msg += f"\nP&L: ${account_pnl:.2f}"
+            if positions:
+                msg += "<b>Positions:</b>\n"
+                for symbol, qty in positions.items():
+                    if symbol in positions_dict:
+                        pos_info = positions_dict[symbol]
+                        market_value = float(pos_info.market_value)
+                        msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
+                    else:
+                        msg += f"  {symbol}: {float(qty):.2f} shares\n"
+            else:
+                msg += "  No open positions\n"
 
-        await message.answer(msg)
+            msg += "\n" + "─" * 40 + "\n\n"
+
+        await loading_msg.delete()
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("stats"))
     @telegram_handler("❌ Error retrieving trading statistics")
     async def show_stats(message: Message):
         """Handle /stats command."""
-        # Get statistics from TradingBot
-        stats = trading_bot.get_trading_stats()
+        loading_msg = await message.answer("⏳ Загружаю статистику...")
+        stats = await asyncio.to_thread(trading_bot.get_trading_stats)
 
-        # Verify statistics were retrieved
         if not stats:
+            await loading_msg.delete()
             raise ValueError("Statistics unavailable")
 
         msg = (
-            f"Trading Statistics:\n"
-            f"Trades today: {stats.get('trades_today', 0)}\n"
-            f"Profit/Loss: ${stats.get('pnl', 0.0):.2f}\n"
-            f"Win rate: {stats.get('win_rate', 0.0):.2f}%"
+            "📊 <b>Trading Statistics (All Strategies)</b>\n\n"
+            f"<b>📝 Total Trades Today:</b> {stats.get('trades_today', 0)}\n"
+            f"<b>💰 Total P&L:</b> ${stats.get('pnl', 0.0):.2f}\n"
+            f"<b>📈 Win Rate:</b> {stats.get('win_rate', 0.0):.2f}%"
         )
-        await message.answer(msg)
+        await loading_msg.delete()
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("settings"))
     @telegram_handler("❌ Error retrieving settings")
     async def show_settings(message: Message):
         """Handle /settings command."""
-        # Get settings from TradingBot
         settings = trading_bot.get_settings()
 
-        # Verify settings were retrieved
         if not settings:
             raise ValueError("Settings unavailable")
 
-        msg = (
-            f"Bot Settings:\n"
-            f"- Rebalance time: {settings.get('rebalance_time', 'not set')}\n"
-            f"- Number of positions: {settings.get('positions_count', 0)}\n"
-            f"- Mode: {settings.get('mode', 'not set')}"
-        )
-        await message.answer(msg)
+        msg = "⚙️ <b>Bot Settings</b>\n\n"
+        msg += f"<b>🕐 Rebalance Time:</b> {settings.get('rebalance_time', 'not set')}\n\n"
+        msg += "<b>📊 Strategies:</b>\n"
+
+        for name, config in settings.get('strategies', {}).items():
+            positions_count = config.get('positions_count', 0)
+            mode = config.get('mode', 'not set')
+            msg += f"  • <b>{name}</b>: {positions_count} positions ({mode})\n"
+
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message(Command("clear"))
     @telegram_handler("❌ Error clearing cache")
