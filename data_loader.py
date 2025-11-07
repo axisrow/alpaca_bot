@@ -2,14 +2,15 @@
 import logging
 import os
 import pickle
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import pandas as pd
 import yfinance as yf
 
-from config import ENVIRONMENT, SNP500_TICKERS, MEDIUM_TICKERS, HIGH_TICKERS, CUSTOM_TICKERS
+from config import ENVIRONMENT, SNP500_TICKERS, HIGH_TICKERS, CUSTOM_TICKERS
 
 logger = logging.getLogger(__name__)
 
@@ -21,26 +22,26 @@ CACHE_VALIDITY_HOURS = 24
 class DataLoader:
     """Handles loading and caching of market data."""
 
+    failed_tickers: list[str] = []  # Track tickers that fail to download
+
     @staticmethod
     def load_market_data(
-        tickers: list,
         period: Optional[str] = None,
         start: Optional[str] = None,
         end: Optional[str] = None,
         group_by: Optional[str] = None,
     ) -> pd.DataFrame:
         """
-        Load market data from cache or yfinance.
+        Load market data (SNP500 + HIGH_TICKERS + CUSTOM_TICKERS) from cache or yfinance.
 
         Args:
-            tickers: List of stock tickers
             period: Period string (e.g., "1y") - ignored if start/end provided
             start: Start date string (e.g., "2023-01-01")
             end: End date string (e.g., "2024-01-01")
             group_by: How to group the data ("ticker" or None)
 
         Returns:
-            DataFrame with market data
+            DataFrame with market data for all tickers (SNP500 + HIGH + CUSTOM)
         """
         # Create cache directory if it doesn't exist
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -52,8 +53,11 @@ class DataLoader:
 
         logger.info("Loading data from yfinance")
 
+        # Always load SNP500 + HIGH_TICKERS + CUSTOM_TICKERS
+        tickers = list(set(SNP500_TICKERS + HIGH_TICKERS + CUSTOM_TICKERS))
+
         # Prepare download parameters
-        download_kwargs: dict[str, Any] = {"progress": False}
+        download_kwargs: dict[str, Any] = {"progress": ENVIRONMENT == "local"}
 
         if period:
             download_kwargs["period"] = period
@@ -66,17 +70,55 @@ class DataLoader:
 
         # Explicitly set auto_adjust to avoid FutureWarning
         download_kwargs["auto_adjust"] = True
+        # Group by ticker for cleaner multi-index columns
+        download_kwargs["group_by"] = "ticker"
 
-        # Download data
-        try:
-            data = yf.download(tickers, **download_kwargs)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.error("Failed to download market data: %s", exc, exc_info=True)
-            raise
+        # Download data with retry mechanism for timeout errors
+        max_retries = 3
+        retry_delay = 2
+        data = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Downloading market data (attempt {attempt}/{max_retries})")
+                data = yf.download(tickers, **download_kwargs)
+                break
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                if attempt < max_retries:
+                    logger.warning(f"Attempt {attempt} failed: {exc}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error("Failed to download market data after %d attempts: %s", max_retries, exc, exc_info=True)
+                    raise
 
         if data is None or data.empty:
             logger.error("Failed to download market data")
             raise ValueError("No data downloaded from yfinance")
+
+        # Validate MultiIndex structure: should have 'Close' in Level 0 (Price level)
+        if 'Close' not in data.columns.get_level_values(1):
+            logger.error("'Close' column not found in downloaded data")
+            raise ValueError("'Close' column not found in data")
+
+        # Detect failed tickers (those with no Close price data)
+        expected = set(tickers)
+        # With group_by='ticker', columns are MultiIndex: ('Close', 'AAPL'), ('Close', 'GOOGL'), etc.
+        if 'Close' in data.columns.get_level_values(0):
+            # Get tickers that have Close data
+            downloaded = set(data['Close'].columns)
+        else:
+            # Fallback: no Close column found
+            downloaded = set()
+
+        failed = list(expected - downloaded)
+        if failed:
+            DataLoader.failed_tickers = failed
+            logger.warning(
+                "Failed to download %d/%d tickers: %s",
+                len(failed),
+                len(expected),
+                failed[:20] if len(failed) > 20 else failed
+            )
 
         # Save to cache
         DataLoader._save_to_cache(data)
@@ -150,16 +192,11 @@ class DataLoader:
 
     @staticmethod
     def get_snp500_tickers() -> list[str]:
-        """Get combined list of S&P 500 + MEDIUM tickers for full data load.
+        """Get SNP500_TICKERS + HIGH_TICKERS + CUSTOM_TICKERS as universal source for all strategies.
 
         Returns:
-            List of S&P 500 + MEDIUM + custom ticker symbols
+            List of SNP500 + HIGH + CUSTOM tickers for universal data loading
         """
-        # Combine all tickers for one-time full data load
-        combined = list(set(SNP500_TICKERS + HIGH_TICKERS))
-        logger.info(
-            f"Loaded {len(SNP500_TICKERS)} SNP500 tickers, "
-            f"{len(MEDIUM_TICKERS)} MEDIUM tickers, "
-            f"{len(CUSTOM_TICKERS)} custom tickers. Total: {len(combined)}"
-        )
+        combined = list(set(SNP500_TICKERS + HIGH_TICKERS + CUSTOM_TICKERS))
+        logger.info(f"Loaded {len(combined)} tickers for universal data load (SNP500 + HIGH + CUSTOM)")
         return combined

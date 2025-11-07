@@ -1,0 +1,4 @@
+name,creation_date,fee_percent,is_fee_receiver,high_watermark,last_fee_date,status
+Alexey,2025-01-01,0.0,True,0.0,2025-01-01,active
+Alex,2025-01-01,0.0,True,0.0,2025-01-01,active
+Cherry,2025-01-15,20.0,False,10000.0,2025-01-01,inactive

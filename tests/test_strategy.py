@@ -50,7 +50,20 @@ class TestMomentumStrategy:
     def test_get_signals_key_error(self, strategy):
         """Should handle KeyError when Close column missing"""
         with patch("data_loader.DataLoader.load_market_data") as mock_load:
-            mock_load.return_value = pd.DataFrame({"Open": [100, 101, 102]})
+            # Create MultiIndex DataFrame without 'Close' column (only 'Open' and 'Volume')
+            index = pd.date_range("2024-01-01", periods=2, freq="D", name="Date")
+            columns = pd.MultiIndex.from_arrays(
+                [
+                    ["AAPL", "AAPL", "GOOGL", "GOOGL"],  # Level 0: Ticker
+                    ["Open", "Volume", "Open", "Volume"],  # Level 1: Price field (no Close!)
+                ],
+                names=["Ticker", "Price"],
+            )
+            mock_load.return_value = pd.DataFrame(
+                [[100, 1000, 200, 2000], [101, 1100, 201, 2100]],
+                index=index,
+                columns=columns,
+            )
 
             with pytest.raises(KeyError):
                 strategy.get_signals()

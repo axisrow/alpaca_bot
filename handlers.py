@@ -92,46 +92,26 @@ def setup_router(trading_bot):
 
             msg += f"<b>🔹 {strategy_name.upper()}</b>\n\n"
 
-            # Current positions
-            msg += "<b>📍 Current Positions:</b>\n"
-            if current_positions:
-                for symbol, qty in current_positions.items():
-                    pos_info = positions_dict.get(symbol)
-                    if pos_info:
-                        market_value = float(getattr(pos_info, 'market_value', 0))
-                        msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
-                    else:
-                        msg += f"  {symbol}: {float(qty):.2f} shares\n"
-            else:
-                msg += "  No open positions\n"
+            # Summary statistics only (no detailed lists)
+            msg += f"📍 Current Positions: {len(current_positions)}\n"
+            msg += f"📉 Positions to Close: {len(positions_to_close)}\n"
+            msg += f"📈 Positions to Open: {len(positions_to_open)}\n"
 
-            msg += f"\n<b>🎯 Top {top_count} by Momentum:</b>\n"
-            for i, ticker in enumerate(top_tickers, 1):
-                msg += f"  {i}. {ticker}\n"
+            # Calculate total value to close
+            total_close_value = 0.0
+            for symbol in positions_to_close:
+                pos_info = positions_dict.get(symbol)
+                if pos_info:
+                    market_value = float(getattr(pos_info, 'market_value', 0))
+                    total_close_value += market_value
 
-            msg += "\n<b>📉 Positions to Close:</b>\n"
-            if positions_to_close:
-                for symbol in positions_to_close:
-                    pos_info = positions_dict.get(symbol)
-                    if pos_info:
-                        market_value = float(getattr(pos_info, 'market_value', 0))
-                        msg += f"  ❌ {symbol} (${market_value:.2f})\n"
-                    else:
-                        msg += f"  ❌ {symbol}\n"
-            else:
-                msg += "  None\n"
-
-            msg += "\n<b>📈 Positions to Open:</b>\n"
-            if positions_to_open:
-                for symbol in positions_to_open:
-                    msg += f"  ✅ {symbol} (${position_size:.2f})\n"
-            else:
-                msg += "  None\n"
+            # Calculate total value to open
+            total_open_value = len(positions_to_open) * position_size if positions_to_open else 0.0
 
             msg += "\n<b>💰 Summary:</b>\n"
             msg += f"  Available cash: ${available_cash:.2f}\n"
-            msg += f"  Position size: ${position_size:.2f}\n"
-            msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
+            msg += f"  Positions to close: {len(positions_to_close)} (${total_close_value:.2f}) | "
+            msg += f"Positions to open: {len(positions_to_open)} (${total_open_value:.2f})\n"
             msg += "\n" + "─" * 40 + "\n\n"
 
         msg += "⚠️ <i>This is a DRY RUN - no trades executed</i>"
@@ -298,6 +278,213 @@ def setup_router(trading_bot):
         await message.answer("❌ Rebalance rejected")
         logging.info("Rebalance rejected by admin")
         trading_bot.awaiting_rebalance_confirmation = False
+
+    @router.message(Command("deposit"))
+    @telegram_handler("❌ Error processing deposit")
+    async def cmd_deposit(message: Message):
+        """Handle /deposit command - deposit money to investor account.
+
+        Usage: /deposit <name> <amount> [account]
+
+        Examples:
+        /deposit Cherry 10000          → distribute by default (45/35/20)
+        /deposit Cherry 5000 low       → deposit to low account only
+        /deposit Cherry 3000 medium    → deposit to medium account only
+
+        account: low, medium, high (optional)
+        """
+        # Admin only
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Admin only")
+            return
+
+        # Parse command
+        parts = message.text.split()
+        if len(parts) < 3 or len(parts) > 4:
+            await message.answer(
+                "Usage: /deposit <name> <amount> [account]\n\n"
+                "Examples:\n"
+                "/deposit Cherry 10000\n"
+                "/deposit Cherry 5000 low\n\n"
+                "Accounts: low, medium, high"
+            )
+            return
+
+        investor_name = parts[1]
+
+        try:
+            amount = float(parts[2])
+        except ValueError:
+            await message.answer("❌ Invalid amount")
+            return
+
+        # Optional account
+        account = parts[3].lower() if len(parts) == 4 else None
+
+        # Validate account
+        if account and account not in ['low', 'medium', 'high']:
+            await message.answer(
+                "❌ Invalid account. Use: low, medium, or high"
+            )
+            return
+
+        # Check investor exists
+        if not trading_bot.investor_manager.investor_exists(investor_name):
+            await message.answer(f"❌ Investor '{investor_name}' not found")
+            return
+
+        # Create pending deposit operation
+        try:
+            from datetime import datetime
+            operation_ids = trading_bot.investor_manager.deposit(
+                investor_name, amount, account, datetime.now()
+            )
+        except Exception as exc:
+            await message.answer(f"❌ Error: {str(exc)}")
+            return
+
+        # Format response
+        msg = f"✅ <b>Deposit Request Created</b>\n\n"
+        msg += f"<b>Investor:</b> {investor_name}\n"
+        msg += f"<b>Total Amount:</b> ${amount:,.2f}\n"
+        msg += f"<b>Status:</b> pending\n\n"
+
+        if account:
+            # Specific account
+            msg += f"<b>Account:</b> {account}\n"
+            msg += f"<b>Amount:</b> ${amount:,.2f}\n"
+        else:
+            # Default distribution
+            msg += "<b>Distribution:</b>\n"
+            msg += f"  • Low (45%): ${amount * 0.45:,.2f}\n"
+            msg += f"  • Medium (35%): ${amount * 0.35:,.2f}\n"
+            msg += f"  • High (20%): ${amount * 0.20:,.2f}\n"
+
+        msg += "\n🔄 Investment will occur at next rebalance"
+
+        await message.answer(msg, parse_mode="HTML")
+
+    @router.message(Command("withdraw"))
+    @telegram_handler("❌ Error processing withdrawal")
+    async def cmd_withdraw(message: Message):
+        """Handle /withdraw command - withdraw money from investor account.
+
+        Usage: /withdraw <name> <amount> [account]
+
+        Examples:
+        /withdraw Cherry 1000 medium   → withdraw 1000 from medium account
+        /withdraw Cherry 5000          → withdraw proportionally (45/35/20)
+
+        account: low, medium, high (optional)
+        """
+        # Admin only
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Admin only")
+            return
+
+        # Parse command
+        parts = message.text.split()
+        if len(parts) < 3 or len(parts) > 4:
+            await message.answer(
+                "Usage: /withdraw <name> <amount> [account]\n\n"
+                "Examples:\n"
+                "/withdraw Cherry 1000 medium\n"
+                "/withdraw Cherry 5000\n\n"
+                "Accounts: low, medium, high"
+            )
+            return
+
+        investor_name = parts[1]
+
+        try:
+            amount = float(parts[2])
+        except ValueError:
+            await message.answer("❌ Invalid amount")
+            return
+
+        # Optional account
+        account = parts[3].lower() if len(parts) == 4 else None
+
+        # Validate account
+        if account and account not in ['low', 'medium', 'high']:
+            await message.answer(
+                "❌ Invalid account. Use: low, medium, or high"
+            )
+            return
+
+        # Check investor exists
+        if not trading_bot.investor_manager.investor_exists(investor_name):
+            await message.answer(f"❌ Investor '{investor_name}' not found")
+            return
+
+        # Check balance
+        balance = trading_bot.investor_manager.calculate_investor_balance(
+            investor_name
+        )
+
+        if account:
+            # Withdraw from specific account
+            available = balance[account]['total_value']
+            if amount > available:
+                await message.answer(
+                    f"❌ Insufficient balance on {account}\n"
+                    f"Available: ${available:,.2f}\n"
+                    f"Requested: ${amount:,.2f}"
+                )
+                return
+        else:
+            # Withdraw proportionally
+            total_available = balance['total_value']
+            if amount > total_available:
+                await message.answer(
+                    f"❌ Insufficient balance\n"
+                    f"Available: ${total_available:,.2f}\n"
+                    f"Requested: ${amount:,.2f}"
+                )
+                return
+
+        # Check for fee at withdrawal
+        fee_info = trading_bot.investor_manager.check_and_calculate_fees(
+            at_rebalance=False,
+            for_investor=investor_name
+        )
+
+        # Create pending withdrawal operation
+        try:
+            from datetime import datetime
+            operation_ids = trading_bot.investor_manager.withdraw(
+                investor_name, amount, account, datetime.now()
+            )
+        except Exception as exc:
+            await message.answer(f"❌ Error: {str(exc)}")
+            return
+
+        # Format response
+        msg = f"✅ <b>Withdrawal Request Created</b>\n\n"
+        msg += f"<b>Investor:</b> {investor_name}\n"
+        msg += f"<b>Total Amount:</b> ${amount:,.2f}\n"
+        msg += f"<b>Status:</b> pending\n\n"
+
+        if account:
+            # Specific account
+            msg += f"<b>Account:</b> {account}\n"
+            msg += f"<b>Amount:</b> ${amount:,.2f}\n"
+        else:
+            # Proportionally
+            msg += "<b>Distribution:</b>\n"
+            msg += f"  • Low (45%): ${amount * 0.45:,.2f}\n"
+            msg += f"  • Medium (35%): ${amount * 0.35:,.2f}\n"
+            msg += f"  • High (20%): ${amount * 0.20:,.2f}\n"
+
+        # Show fee if applicable
+        if fee_info and investor_name in fee_info:
+            fee = fee_info[investor_name]
+            msg += f"\n⚠️ <b>Performance fee:</b> ${fee:,.2f}\n"
+            msg += f"<b>Net withdrawal:</b> ${amount - fee:,.2f}\n"
+
+        msg += "\n🔄 Withdrawal will occur at next rebalance"
+
+        await message.answer(msg, parse_mode="HTML")
 
     @router.message()
     async def echo(message: Message):

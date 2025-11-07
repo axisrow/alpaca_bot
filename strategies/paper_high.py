@@ -19,9 +19,9 @@ class PaperHighStrategy:
     # Strategy configuration
     API_KEY = config.ALPACA_API_KEY_HIGH
     SECRET_KEY = config.ALPACA_SECRET_KEY_HIGH
-    PAPER = False
+    PAPER = True
     TOP_COUNT = 50
-    ENABLED = False
+    ENABLED = True
     TICKERS = 'all'  # SNP500 + MEDIUM + CUSTOM tickers
 
     def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 50):
@@ -38,26 +38,29 @@ class PaperHighStrategy:
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
-        """Get trading signals - top N stocks by momentum.
+        """Get trading signals - top N stocks by momentum from self.tickers only.
 
         Returns:
             List[str]: List of tickers with highest momentum
         """
         try:
-            data = DataLoader.load_market_data(self.tickers, period="1y")
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+            data = DataLoader.load_market_data(period="1y")
+        except Exception:  # pylint: disable=broad-exception-caught
             raise
 
-        if data is None:
+        if data is None or data.empty:  # type: ignore[union-attr]
             raise KeyError("'Close' column not found in data")
-        if data.empty or 'Close' not in data.columns:  # type: ignore[union-attr]
+        if 'Close' not in data.columns.get_level_values(1):  # type: ignore[attr-defined]
             raise KeyError("'Close' column not found in data")
 
         data = cast(pd.DataFrame, data)  # type: ignore[assignment]
-        return (data['Close']  # type: ignore[index]
-                .dropna(axis='columns')  # type: ignore[call-overload]
-                .pct_change(periods=len(data)-1)  # type: ignore[no-untyped-call]
-                .iloc[-1]  # type: ignore[attr-defined]
+        # Calculate momentum for all tickers: (last_price / first_price - 1)
+        close_prices = data.xs('Close', level=1, axis=1)  # type: ignore[attr-defined]
+        momentum = (close_prices.iloc[-1] / close_prices.iloc[0] - 1)  # type: ignore[attr-defined]
+        # Filter to only tickers in self.tickers, then get top_count
+        momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
+        momentum_filtered = momentum[momentum.index.isin(self.tickers)]
+        return (momentum_filtered
                 .nlargest(self.top_count)  # type: ignore[attr-defined]
                 .index
                 .tolist())

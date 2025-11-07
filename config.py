@@ -122,7 +122,7 @@ HIGH_TICKERS = [
     'TMHC', 'TNGX', 'TNXP', 'TRIN', 'TRIP', 'TRP', 'TRU', 'TRUP', 'TS', 'TSAT',
     'TSHA', 'TSM', 'TSSI', 'TTD', 'TTGT', 'TTI', 'TV', 'TWLO', 'TWST', 'TXNM',
     'UAN', 'UCTT', 'UEC', 'UFPI', 'UGI', 'UI', 'ULH', 'UMC', 'UNM', 'UOKA',
-    'UPBD', 'UPST', 'UPWK', 'UPXI', 'URBN', 'URGN', 'USAR', 'USFD', 'USLM', 'USM',
+    'UPBD', 'UPST', 'UPWK', 'UPXI', 'URBN', 'URGN', 'USAR', 'USFD', 'USLM',
     'USPH', 'UTHR', 'UTI', 'UTZ', 'UUUU', 'UWMC', 'VALE', 'VEEV', 'VEL', 'VERA',
     'VFC', 'VG', 'VICR', 'VIK', 'VIR', 'VIRT', 'VIST', 'VITL', 'VKTX', 'VNO',
     'VNOM', 'VOR', 'VOYG', 'VRNS', 'VRNT', 'VRT', 'VRTS', 'VSAT', 'VSCO', 'VSTM',

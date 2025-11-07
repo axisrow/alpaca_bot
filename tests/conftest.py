@@ -48,20 +48,46 @@ def mock_trading_client():
 
 @pytest.fixture
 def mock_yfinance(monkeypatch):
-    """Mock yfinance download"""
-    df = pd.DataFrame({
-        "Close": [100 + i for i in range(250)]  # 250 trading days
-    })
+    """Mock yfinance download with real MultiIndex structure (Ticker, Price)"""
+    index = pd.date_range("2023-11-07", periods=250, freq="D", name="Date")
+    columns = pd.MultiIndex.from_arrays(
+        [
+            ["AAPL"] * 5 + ["GOOGL"] * 5 + ["MSFT"] * 5,  # Level 0: Ticker
+            ["Open", "High", "Low", "Close", "Volume"] * 3,  # Level 1: Price field
+        ],
+        names=["Ticker", "Price"],
+    )
+    data_values = [[100 + i, 101 + i, 99 + i, 100.5 + i, 1000000 + i * 100]
+                   for i in range(250)]
+    # Repeat for 3 tickers
+    data_values_full = []
+    for row in data_values:
+        data_values_full.append(row * 3)
+
+    df = pd.DataFrame(data_values_full, index=index, columns=columns)
     monkeypatch.setattr("yfinance.download", MagicMock(return_value=df))
     return df
 
 
 @pytest.fixture
 def mock_data_loader(monkeypatch):
-    """Mock DataLoader.load_market_data"""
-    df = pd.DataFrame({
-        "Close": [100 + i for i in range(250)]  # 250 trading days
-    })
+    """Mock DataLoader.load_market_data with real MultiIndex structure (Ticker, Price)"""
+    index = pd.date_range("2023-11-07", periods=250, freq="D", name="Date")
+    columns = pd.MultiIndex.from_arrays(
+        [
+            ["AAPL"] * 5 + ["GOOGL"] * 5 + ["MSFT"] * 5,  # Level 0: Ticker
+            ["Open", "High", "Low", "Close", "Volume"] * 3,  # Level 1: Price field
+        ],
+        names=["Ticker", "Price"],
+    )
+    data_values = [[100 + i, 101 + i, 99 + i, 100.5 + i, 1000000 + i * 100]
+                   for i in range(250)]
+    # Repeat for 3 tickers
+    data_values_full = []
+    for row in data_values:
+        data_values_full.append(row * 3)
+
+    df = pd.DataFrame(data_values_full, index=index, columns=columns)
     monkeypatch.setattr("data_loader.DataLoader.load_market_data", MagicMock(return_value=df))
     return df
 

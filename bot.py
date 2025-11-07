@@ -1,7 +1,6 @@
 """Main module for trading bot with Telegram interface."""
 import asyncio
 import logging
-import os
 import signal
 import sys
 from dataclasses import dataclass
@@ -18,14 +17,14 @@ from alpaca.trading.requests import GetOrdersRequest
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT, SNP500_TICKERS, CUSTOM_TICKERS, MEDIUM_TICKERS
+from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS, ENVIRONMENT, SNP500_TICKERS, CUSTOM_TICKERS
 from data_loader import DataLoader
 from handlers import setup_router
+from investor_manager import InvestorManager
 from strategies.paper_low import PaperLowStrategy
 from strategies.paper_medium import PaperMediumStrategy
 from strategies.paper_high import PaperHighStrategy
 from strategies.live import LiveStrategy
-from utils import get_positions
 
 # Configure logging
 logging.basicConfig(
@@ -248,34 +247,41 @@ class MarketSchedule:
 
 
 class PortfolioManager:
-    """Class for managing portfolio."""
+    """Lightweight helper for inspecting current portfolio state."""
 
-    def __init__(self, trading_client: TradingClient, telegram_bot: Any = None):
-        """Initialize portfolio manager.
-
-        Args:
-            trading_client: Alpaca API client
-            telegram_bot: Optional TelegramBot instance for notifications
-        """
+    def __init__(self, trading_client: TradingClient, strategy: Any | None = None):
+        """Initialize manager with default client and optional strategy."""
         self.trading_client = trading_client
-        self.telegram_bot = telegram_bot
-        self.strategy = MomentumStrategy(self.trading_client)
+        self.strategy = strategy
 
-    def set_telegram_bot(self, telegram_bot: Any) -> None:
-        """Set telegram bot instance for notifications.
-
-        Args:
-            telegram_bot: TelegramBot instance
-        """
-        self.telegram_bot = telegram_bot
+    def set_strategy(self, strategy: Any) -> None:
+        """Attach or update the active strategy reference."""
+        self.strategy = strategy
 
     def get_current_positions(self) -> Dict[str, float]:
-        """Get current positions.
+        """Return a symbol -> quantity mapping for current holdings."""
+        if not self.trading_client:
+            logging.warning("PortfolioManager trading client is not configured")
+            return {}
 
-        Returns:
-            Dict[str, float]: Dictionary of positions {ticker: quantity}
-        """
-        return get_positions(self.trading_client)
+        try:
+            raw_positions = self.trading_client.get_all_positions() or []
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Failed to fetch current positions: %s", exc)
+            return {}
+
+        positions: Dict[str, float] = {}
+        for position in raw_positions:
+            symbol = getattr(position, 'symbol', None)
+            if not symbol:
+                continue
+            qty_raw = getattr(position, 'qty', 0)
+            try:
+                positions[symbol] = float(qty_raw)
+            except (TypeError, ValueError):
+                logging.debug("Invalid quantity for %s: %s", symbol, qty_raw)
+                positions[symbol] = 0.0
+        return positions
 
 
 class TradingBot:
@@ -285,16 +291,22 @@ class TradingBot:
         """Initialize trading bot with multiple strategies."""
         load_dotenv()
         self.strategies = {}  # Dict[str, Dict[str, Any]]
+        self.investor_manager = None  # Will be set for LiveStrategy
         self._initialize_strategies()
-        # Use first enabled strategy's trading_client for market schedule
-        first_client = next(
-            (data['client'] for data in self.strategies.values() if data.get('enabled')),
+        # Use first enabled strategy's trading_client for market schedule and portfolio manager
+        first_enabled = next(
+            (data for data in self.strategies.values() if data.get('enabled')),
             None
         )
-        if not first_client:
+        if not first_enabled:
             logging.error("No enabled strategies configured!")
             sys.exit(1)
+        first_client = first_enabled['client']
         self.market_schedule = MarketSchedule(first_client)
+        self.portfolio_manager = PortfolioManager(
+            trading_client=first_client,
+            strategy=first_enabled.get('strategy')
+        )
         self.rebalance_flag = RebalanceFlag()
         self.scheduler = BackgroundScheduler()
         self.telegram_bot = None  # Will be set after TelegramBot creation
@@ -341,11 +353,25 @@ class TradingBot:
                     tickers = DataLoader.get_snp500_tickers()
 
                 # Create strategy instance
-                strategy = strategy_class(
-                    trading_client=trading_client,
-                    tickers=tickers,
-                    top_count=strategy_class.TOP_COUNT
-                )
+                if strategy_name == 'live':
+                    # Initialize InvestorManager for LiveStrategy
+                    self.investor_manager = InvestorManager(
+                        registry_path='investors_registry.csv'
+                    )
+                    logging.info("InvestorManager initialized")
+
+                    strategy = strategy_class(
+                        trading_client=trading_client,
+                        tickers=tickers,
+                        top_count=strategy_class.TOP_COUNT,
+                        investor_manager=self.investor_manager
+                    )
+                else:
+                    strategy = strategy_class(
+                        trading_client=trading_client,
+                        tickers=tickers,
+                        top_count=strategy_class.TOP_COUNT
+                    )
 
                 self.strategies[strategy_name] = {
                     'client': trading_client,
@@ -356,6 +382,9 @@ class TradingBot:
                         'top_count': strategy_class.TOP_COUNT
                     }
                 }
+                if strategy_name == 'live' and self.investor_manager:
+                    self.strategies[strategy_name]['investor_manager'] = self.investor_manager
+
                 logging.info("Strategy %s initialized successfully", strategy_name)
 
             except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -476,6 +505,15 @@ class TradingBot:
         logging.info("Market status: %s%s",
                      'open' if is_open else 'closed',
                      f" (Reason: {reason})" if not is_open else "")
+
+        # Pre-load SNP500 + HIGH_TICKERS for all strategies to use cache
+        try:
+            logging.info("Pre-loading market data for all strategies...")
+            DataLoader.load_market_data(period="1y")
+            logging.info("Market data pre-loaded successfully")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Error pre-loading market data: %s", exc, exc_info=True)
+
         if not self.scheduler.running:
             self.scheduler.start()
             self.scheduler.add_job(
@@ -486,6 +524,17 @@ class TradingBot:
                 minute=0,
                 timezone=NY_TIMEZONE
             )
+            # Add daily snapshot job for investors (after market close)
+            if self.investor_manager:
+                self.scheduler.add_job(
+                    self.save_daily_investor_snapshots,
+                    'cron',
+                    hour=16,
+                    minute=30,
+                    timezone=NY_TIMEZONE,
+                    id='daily_investor_snapshots'
+                )
+                logging.info("Daily investor snapshot job scheduled")
         else:
             logging.info("Scheduler already running")
         if is_open:
@@ -497,6 +546,16 @@ class TradingBot:
         if self.scheduler.running:
             self.scheduler.shutdown(wait=True)
             logging.info("Scheduler stopped")
+
+    def save_daily_investor_snapshots(self) -> None:
+        """Save daily investor account snapshots."""
+        try:
+            if self.investor_manager:
+                now_ny = datetime.now(NY_TIMEZONE)
+                self.investor_manager.save_daily_snapshot(now_ny)
+                logging.info("Daily investor snapshots saved")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Error saving investor snapshots: %s", exc)
 
     def get_portfolio_status(self) -> Tuple[Dict[str, Dict[str, Any]], float, float]:
         """Get detailed portfolio data from all strategies.
@@ -700,8 +759,18 @@ class TradingBot:
 
                 # Calculate position size
                 position_size = 0.0
-                if positions_to_open and available_cash > 0:
-                    position_size = available_cash / len(positions_to_open)
+                if positions_to_open:
+                    # Calculate total cash that will be available after closing positions
+                    total_close_value = 0.0
+                    for symbol in positions_to_close:
+                        pos_info = positions_dict.get(symbol)
+                        if pos_info:
+                            market_value = float(getattr(pos_info, 'market_value', 0))
+                            total_close_value += market_value
+
+                    total_cash_after_close = available_cash + total_close_value
+                    if total_cash_after_close > 0:
+                        position_size = total_cash_after_close / len(positions_to_open)
 
                 previews[strategy_name] = {
                     "current_positions": current_positions,
@@ -947,14 +1016,25 @@ class TelegramBot:
         msg += "\n<b>📈 Positions to Open:</b>\n"
         if positions_to_open:
             for symbol in positions_to_open:
-                msg += f"  ✅ {symbol} (${position_size:.2f})\n"
+                msg += f"  ✅ {symbol}\n"
         else:
             msg += "  None\n"
 
+        # Calculate total value to close
+        total_close_value = 0.0
+        for symbol in positions_to_close:
+            pos_info = positions_dict.get(symbol)
+            if pos_info:
+                market_value = float(getattr(pos_info, 'market_value', 0))
+                total_close_value += market_value
+
+        # Calculate total value to open
+        total_open_value = len(positions_to_open) * position_size if positions_to_open else 0.0
+
         msg += "\n<b>💰 Summary:</b>\n"
         msg += f"  Available cash: ${available_cash:.2f}\n"
-        msg += f"  Position size: ${position_size:.2f}\n"
-        msg += f"  Changes: {len(positions_to_close)} close + {len(positions_to_open)} open\n"
+        msg += f"  Positions to close: {len(positions_to_close)} (${total_close_value:.2f}) | "
+        msg += f"Positions to open: {len(positions_to_open)} (${total_open_value:.2f})\n"
 
         msg += "\n<b>👉 Reply with:</b>\n"
         msg += "  <code>да</code> or <code>yes</code> - Approve rebalance\n"
@@ -973,6 +1053,7 @@ class TelegramBot:
             BotCommand(command="stats", description="Trading statistics"),
             BotCommand(command="settings", description="Bot settings"),
             BotCommand(command="check_rebalance", description="Days until rebalancing"),
+            BotCommand(command="test_rebalance", description="🧪 Test rebalance (admin only)"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
         await self.dp.start_polling(self.bot, allowed_updates=None)
