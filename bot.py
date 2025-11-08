@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import pytz
-from aiohttp import ClientSession, ClientTimeout
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from alpaca.trading.client import TradingClient
@@ -814,9 +814,7 @@ class TelegramBot:
         assert TELEGRAM_BOT_TOKEN is not None, "TELEGRAM_BOT_TOKEN must be set"
 
         # Create session with increased timeout for production stability
-        session = ClientSession(
-            timeout=ClientTimeout(total=60)  # 60 second total timeout
-        )
+        session = AiohttpSession(timeout=60)  # 60 second timeout for all requests
 
         self.bot = Bot(token=TELEGRAM_BOT_TOKEN, session=session)
         self.dp = Dispatcher()

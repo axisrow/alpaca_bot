@@ -222,6 +222,7 @@ Run tests: `pytest tests/` or `pytest tests/test_strategy.py::test_name` for spe
 - **Logging** - Dual output to console and `data/trading_bot.log` via `logging.basicConfig(handlers=[...])`
 - **Position Tracking** - Uses Alpaca position API (`trading_client.get_all_positions()`), no local database
 - **Backtesting** - Separate simulation module with `FakeAccount` and `FakePosition` classes
+- **Telegram Session Configuration** - Custom `AiohttpSession` with 60-second timeout for production stability, prevents "Connection reset by peer" and timeout context manager errors on unstable networks
 
 ## Common Debugging Approaches
 
