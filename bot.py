@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import pytz
+from aiohttp import ClientSession, ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from alpaca.trading.client import TradingClient
@@ -90,7 +91,8 @@ class TelegramLoggingHandler(logging.Handler):
                 await self.bot.send_message(
                     chat_id=admin_id,
                     text=message,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    request_timeout=30
                 )
             except Exception:  # pylint: disable=broad-exception-caught
                 # Silently ignore - don't log to prevent infinite loops
@@ -810,7 +812,13 @@ class TelegramBot:
             trading_bot: Trading bot instance
         """
         assert TELEGRAM_BOT_TOKEN is not None, "TELEGRAM_BOT_TOKEN must be set"
-        self.bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
+        # Create session with increased timeout for production stability
+        session = ClientSession(
+            timeout=ClientTimeout(total=60)  # 60 second total timeout
+        )
+
+        self.bot = Bot(token=TELEGRAM_BOT_TOKEN, session=session)
         self.dp = Dispatcher()
         self.trading_bot = trading_bot
         self.router = setup_router(self.trading_bot)
@@ -838,7 +846,8 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=admin_id,
                     text=message,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    request_timeout=30
                 )
                 logging.info("Message sent to admin %s", admin_id)
             except Exception as exc:  # pylint: disable=broad-exception-caught
