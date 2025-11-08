@@ -29,9 +29,6 @@ class LiveStrategy:
     ENABLED = True
     TICKERS = 'all'  # SNP500 + MEDIUM + CUSTOM tickers
 
-    # Account allocation (low/medium/high)
-    ACCOUNT_ALLOCATION = {'low': 0.45, 'medium': 0.35, 'high': 0.20}
-
     def __init__(self, trading_client: TradingClient, tickers: List[str],
                  top_count: int = 50,
                  investor_manager: Optional['InvestorManager'] = None):

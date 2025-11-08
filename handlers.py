@@ -6,6 +6,7 @@ from pathlib import Path
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import FSInputFile
 
 from config import ADMIN_IDS
 from data_loader import DataLoader
@@ -44,8 +45,14 @@ def setup_router(trading_bot):
             "/info - Bot information\n"
             "/portfolio - Portfolio status\n"
             "/stats - Trading statistics\n"
-            "/settings - Bot settings\n"
-            "/clear - Clear cache (admin only)"
+            "/settings - Bot settings\n\n"
+            "Admin commands:\n"
+            "/balance_check - Verify balance integrity\n"
+            "/investors - Show all investors balances\n"
+            "/export <name> - Export investor CSV files\n"
+            "/clear - Clear cache\n"
+            "/deposit - Deposit to investor\n"
+            "/withdraw - Withdraw from investor"
         )
 
     @router.message(Command("check_rebalance"))
@@ -483,6 +490,131 @@ def setup_router(trading_bot):
             msg += f"<b>Net withdrawal:</b> ${amount - fee:,.2f}\n"
 
         msg += "\n🔄 Withdrawal will occur at next rebalance"
+
+        await message.answer(msg, parse_mode="HTML")
+
+    @router.message(Command("balance_check"))
+    @telegram_handler("❌ Error checking balance integrity")
+    async def cmd_balance_check(message: Message):
+        """Handle /balance_check command - verify balance integrity."""
+        # Admin only
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Admin only")
+            return
+
+        loading_msg = await message.answer("⏳ Checking balance integrity...")
+
+        # Get trading client for live strategy
+        if 'live' not in trading_bot.strategies:
+            await loading_msg.delete()
+            await message.answer("❌ Live strategy not available")
+            return
+
+        trading_client = trading_bot.strategies['live']['client']
+
+        # Check balance integrity
+        is_valid, msg_text = await asyncio.to_thread(
+            trading_bot.investor_manager.verify_balance_integrity,
+            trading_client
+        )
+
+        icon = "✅" if is_valid else "❌"
+        await loading_msg.delete()
+        await message.answer(f"{icon} {msg_text}", parse_mode="HTML")
+
+    @router.message(Command("investors"))
+    @telegram_handler("❌ Error retrieving investors data")
+    async def cmd_investors(message: Message):
+        """Handle /investors command - show all investors balances."""
+        loading_msg = await message.answer("⏳ Loading investors data...")
+
+        # Get all balances
+        balances = await asyncio.to_thread(
+            trading_bot.investor_manager.get_all_balances
+        )
+
+        if not balances:
+            await loading_msg.delete()
+            await message.answer("❌ No investors found")
+            return
+
+        msg = "👥 <b>Investors Summary</b>\n\n"
+
+        total_portfolio = 0.0
+        total_pnl = 0.0
+
+        for investor_name, data in balances.items():
+            total_value = data.get('total_value', 0.0)
+            pnl = data.get('pnl', 0.0)
+
+            total_portfolio += total_value
+            total_pnl += pnl
+
+            msg += f"<b>{investor_name}</b>\n"
+            msg += f"  💰 Balance: ${total_value:,.2f}\n"
+            msg += f"  📈 P&L: ${pnl:,.2f}\n\n"
+
+        msg += "─" * 40 + "\n"
+        msg += f"<b>Total Portfolio:</b> ${total_portfolio:,.2f}\n"
+        msg += f"<b>Total P&L:</b> ${total_pnl:,.2f}"
+
+        await loading_msg.delete()
+        await message.answer(msg, parse_mode="HTML")
+
+    @router.message(Command("export"))
+    @telegram_handler("❌ Error exporting data")
+    async def cmd_export(message: Message):
+        """Handle /export command - download investor CSV files.
+
+        Usage: /export <name>
+        Files: operations.csv, trades.csv
+        """
+        # Admin only
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Admin only")
+            return
+
+        # Parse command
+        parts = message.text.split()
+        if len(parts) != 2:
+            await message.answer("Usage: /export <name>")
+            return
+
+        investor_name = parts[1]
+
+        # Check investor exists
+        if not trading_bot.investor_manager.investor_exists(investor_name):
+            await message.answer(f"❌ Investor '{investor_name}' not found")
+            return
+
+        # Get investor path
+        investor_path = trading_bot.investor_manager._get_investor_path(investor_name)
+
+        # Find and send files
+        files_found = []
+        files_to_send = ['operations.csv', 'trades.csv']
+
+        for filename in files_to_send:
+            file_path = investor_path / filename
+            if file_path.exists():
+                files_found.append((filename, file_path))
+
+        if not files_found:
+            await message.answer(f"❌ No files found for investor '{investor_name}'")
+            return
+
+        # Send files
+        msg = f"📥 Exporting files for <b>{investor_name}</b>...\n\n"
+
+        for filename, file_path in files_found:
+            try:
+                await message.answer_document(
+                    FSInputFile(file_path),
+                    caption=f"📄 {filename}"
+                )
+                msg += f"✅ {filename}\n"
+            except Exception as exc:
+                msg += f"❌ {filename}: {str(exc)}\n"
 
         await message.answer(msg, parse_mode="HTML")
 

@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 import pytz
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -972,8 +972,16 @@ class TelegramBot:
         # Set flag indicating we're waiting for confirmation
         self.trading_bot.awaiting_rebalance_confirmation = True
 
-        # Get rebalance preview
-        preview = self.trading_bot.get_rebalance_preview()
+        # Get rebalance preview for all strategies
+        previews = self.trading_bot.get_rebalance_preview()
+
+        # Check if we have any strategy preview
+        if not previews:
+            logging.error("No strategy previews available")
+            return
+
+        # Get first strategy preview
+        preview = next(iter(previews.values()))
 
         # Check for errors in preview
         if "error" in preview:
@@ -981,13 +989,13 @@ class TelegramBot:
             return
 
         # Build response message
-        current_positions = preview.get("current_positions", {})
-        positions_dict = preview.get("positions_dict", {})
-        top_tickers = preview.get("top_tickers", [])
-        positions_to_close = preview.get("positions_to_close", [])
-        positions_to_open = preview.get("positions_to_open", [])
-        available_cash = preview.get("available_cash", 0.0)
-        position_size = preview.get("position_size", 0.0)
+        current_positions = cast(Dict[str, float], preview.get("current_positions", {}))
+        positions_dict = cast(Dict[str, Any], preview.get("positions_dict", {}))
+        top_tickers = cast(list, preview.get("top_tickers", []))
+        positions_to_close = cast(list, preview.get("positions_to_close", []))
+        positions_to_open = cast(list, preview.get("positions_to_open", []))
+        available_cash = float(cast(float, preview.get("available_cash", 0.0)))
+        position_size = float(cast(float, preview.get("position_size", 0.0)))
 
         msg = "🔄 <b>Rebalance Request - Need Confirmation</b>\n\n"
 
