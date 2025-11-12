@@ -40,6 +40,7 @@ class InvestorManager:
         self.registry_path = Path(registry_path)
         self.investors_dir = Path('data/investors')
         self.investors: Dict[str, Investor] = {}
+        self.ny_timezone = NY_TIMEZONE
         self._load_registry()
         self._ensure_investor_directories()
 
