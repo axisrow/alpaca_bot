@@ -11,6 +11,7 @@ from aiogram.types import FSInputFile
 from config import ADMIN_IDS
 from data_loader import DataLoader
 from utils import telegram_handler
+from stories.story_engine import StoryEngine
 
 
 def setup_router(trading_bot):
@@ -23,6 +24,7 @@ def setup_router(trading_bot):
         Router: Configured router with handlers
     """
     router = Router()
+    story_engine = StoryEngine()  # Initialize story engine
 
     @router.message(Command("start"))
     async def cmd_start(message: Message):
@@ -46,6 +48,11 @@ def setup_router(trading_bot):
             "/portfolio - Portfolio status\n"
             "/stats - Trading statistics\n"
             "/settings - Bot settings\n\n"
+            "📖 Story Mode (NEW):\n"
+            "/story - Show available stories\n"
+            "/read_story <id> - Start reading a story\n"
+            "/read_chapter - Read next chapter\n"
+            "/story_status - Check story progress\n\n"
             "Admin commands:\n"
             "/balance_check - Verify balance integrity\n"
             "/investors - Show all investors balances\n"
@@ -617,6 +624,96 @@ def setup_router(trading_bot):
                 msg += f"❌ {filename}: {str(exc)}\n"
 
         await message.answer(msg, parse_mode="HTML")
+
+    @router.message(Command("story"))
+    @telegram_handler()
+    async def cmd_story(message: Message):
+        """Handle /story command - show available stories."""
+        stories = story_engine.get_available_stories()
+
+        if not stories:
+            await message.answer("📖 No stories available yet.")
+            return
+
+        story_list = "🎭 **Available Stories**\n\n"
+        for story in stories:
+            story_list += (
+                f"📖 **{story['title']}**\n"
+                f"   Description: {story['description']}\n"
+                f"   👥 Audience: {story['audience']}\n"
+                f"   📚 Chapters: {story['chapters']}\n"
+                f"   Start with: `/read_story {story['id']}`\n\n"
+            )
+
+        await message.answer(story_list, parse_mode="HTML")
+
+    @router.message(Command("read_story"))
+    @telegram_handler()
+    async def cmd_read_story(message: Message):
+        """Handle /read_story {story_id} - start reading a story."""
+        args = message.text.split()
+
+        if len(args) < 2:
+            await message.answer(
+                "📖 Usage: /read_story <story_id>\n\n"
+                "Available story IDs:\n"
+                "• digital_freedom_quest - The epic journey of a young trader"
+            )
+            return
+
+        story_id = args[1]
+
+        if not story_engine.start_story(story_id):
+            await message.answer(f"❌ Story '{story_id}' not found.")
+            return
+
+        story = story_engine.active_story
+        intro = story.get_story_intro()
+
+        await message.answer(intro, parse_mode="HTML")
+
+    @router.message(Command("read_chapter"))
+    @telegram_handler()
+    async def cmd_read_chapter(message: Message):
+        """Handle /read_chapter - read next chapter of active story."""
+        if not story_engine.active_story:
+            await message.answer(
+                "📖 No active story. Start one with:\n"
+                "/read_story digital_freedom_quest"
+            )
+            return
+
+        chapter = story_engine.get_current_chapter()
+
+        if not chapter:
+            await message.answer(
+                "✅ Story completed! You've reached the end of this journey.\n\n"
+                "Want another story? /story"
+            )
+            return
+
+        chapter_text = (
+            f"{chapter['emoji']} **{chapter['title']}**\n\n"
+            f"{chapter['content']}\n\n"
+            f"📖 {story_engine.active_story.get_progress()}"
+        )
+
+        await message.answer(chapter_text, parse_mode="HTML")
+
+    @router.message(Command("story_status"))
+    @telegram_handler()
+    async def cmd_story_status(message: Message):
+        """Handle /story_status - show current story progress."""
+        status = story_engine.get_story_status()
+
+        if not status:
+            await message.answer(
+                "📖 No active story yet.\n"
+                "Start your journey: /read_story digital_freedom_quest"
+            )
+            return
+
+        await message.answer(status, parse_mode="HTML")
 
     @router.message()
     async def echo(message: Message):
