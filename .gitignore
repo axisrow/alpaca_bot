@@ -80,6 +80,9 @@ htmlcov/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+.VSCodeCounter/
+.VSCodeCounter/*
+.benchmarks
 .idea/
 .idea_modules/
 *.sublime-workspace

@@ -1,8 +1,9 @@
 """Utilities and helper functions."""
+import asyncio
 import logging
 import time
 from functools import wraps
-from typing import Callable, TypeVar, Any, Dict
+from typing import Callable, TypeVar, Any, Dict, Coroutine
 
 T = TypeVar('T')
 
@@ -61,6 +62,17 @@ def get_positions(trading_client) -> Dict[str, float]:
     """
     positions = trading_client.get_all_positions()
     return {pos.symbol: float(pos.qty) for pos in positions}
+
+
+def run_sync(coro: Coroutine[Any, Any, T], timeout: float | None = 30) -> T:
+    """Execute coroutine from sync context using current or new loop."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=timeout)
 
 
 def telegram_handler(error_message: str = "❌ An error occurred"):

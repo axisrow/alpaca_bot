@@ -12,11 +12,11 @@ from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
 import config
-from data_loader import DataLoader
-from utils import retry_on_exception, get_positions
+from core.data_loader import load_market_data
+from core.utils import retry_on_exception, get_positions
 
 if TYPE_CHECKING:
-    from investor_manager import InvestorManager
+    from core.investor_manager import InvestorManager
 
 class LiveStrategy:
     """Class implementing momentum-based trading strategy for live account with investor management."""
@@ -54,18 +54,18 @@ class LiveStrategy:
             List[str]: List of tickers with highest momentum
         """
         try:
-            data = DataLoader.load_market_data(period="1y")
+            data = load_market_data()
         except Exception:  # pylint: disable=broad-exception-caught
             raise
 
         if data is None or data.empty:  # type: ignore[union-attr]
             raise KeyError("'Close' column not found in data")
-        if 'Close' not in data.columns.get_level_values(1):  # type: ignore[attr-defined]
+        if 'Close' not in data.columns.get_level_values(0):  # type: ignore[attr-defined]
             raise KeyError("'Close' column not found in data")
 
         data = cast(pd.DataFrame, data)  # type: ignore[assignment]
         # Calculate momentum for all tickers: (last_price / first_price - 1)
-        close_prices = data.xs('Close', level=1, axis=1)  # type: ignore[attr-defined]
+        close_prices = data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
         momentum = (close_prices.iloc[-1] / close_prices.iloc[0] - 1)  # type: ignore[attr-defined]
         # Filter to only tickers in self.tickers, then get top_count
         momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
@@ -273,19 +273,19 @@ class LiveStrategy:
         """Рассчитать top N по momentum для списка тикеров из tickers."""
         # Загружаем все данные, но фильтруем по переданным tickers
         try:
-            data = DataLoader.load_market_data(period="1y")
+            data = load_market_data()
         except Exception as exc:
             logging.error("Error loading market data: %s", exc)
             return tickers[:self.top_count]  # Fallback
 
-        if data is None or data.empty or 'Close' not in data.columns.get_level_values(1):  # type: ignore
+        if data is None or data.empty or 'Close' not in data.columns.get_level_values(0):  # type: ignore
             logging.warning("No data for signals calculation")
             return tickers[:self.top_count]
 
         data = cast(pd.DataFrame, data)  # type: ignore
         try:
             # Calculate momentum for all tickers, but select only from provided tickers
-            momentum = (data.xs('Close', level=1, axis=1)  # type: ignore[attr-defined]
+            momentum = (data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
                         .dropna(axis='columns')  # type: ignore
                         .pct_change(periods=len(data)-1)  # type: ignore
                         .iloc[-1])  # type: ignore

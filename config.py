@@ -1,11 +1,21 @@
 """Application configuration and constants."""
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Environment (local, prod)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "prod")
+
+# Market data & cache configuration (fixed, not env-driven)
+CACHE_DIR = Path("data")
+CACHE_FILE = CACHE_DIR / "cache.pkl"
+CACHE_VALIDITY_HOURS = 24
+MARKET_DATA_PERIOD = "1y"
+MARKET_DATA_MAX_RETRIES = 3
+MARKET_DATA_RETRY_DELAY_SECONDS = 2
+MARKET_DATA_ENABLE_RETRY = True
 
 # Telegram bot token
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")

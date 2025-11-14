@@ -8,8 +8,8 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
-from data_loader import DataLoader
-from utils import retry_on_exception, get_positions
+from core.data_loader import load_market_data
+from core.utils import retry_on_exception, get_positions
 
 
 class BaseMomentumStrategy:
@@ -51,16 +51,16 @@ class BaseMomentumStrategy:
         Returns:
             List[str]: List of tickers with highest momentum
         """
-        data = DataLoader.load_market_data(period="1y")
+        data = load_market_data()
 
         if data is None or data.empty:  # type: ignore[union-attr]
             raise KeyError("'Close' column not found in data")
-        if 'Close' not in data.columns.get_level_values(1):  # type: ignore[attr-defined]
+        if 'Close' not in data.columns.get_level_values(0):  # type: ignore[attr-defined]
             raise KeyError("'Close' column not found in data")
 
         data = cast(pd.DataFrame, data)  # type: ignore[assignment]
         # Calculate momentum for all tickers: (last_price / first_price - 1)
-        close_prices = data.xs('Close', level=1, axis=1)  # type: ignore[attr-defined]
+        close_prices = data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
         momentum = close_prices.iloc[-1] / close_prices.iloc[0] - 1  # type: ignore[attr-defined]
 
         # Cast to Series for type safety
