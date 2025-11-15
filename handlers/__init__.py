@@ -23,9 +23,9 @@ def setup_router(trading_bot):
     # 2. Admin router (specific admin commands)
     # 3. User router (general user commands)
     # 4. Catchall router (unknown messages - MUST be last)
-    main_router.include_router(setup_start_router(trading_bot))
+    main_router.include_router(setup_start_router())
     main_router.include_router(setup_admin_router(trading_bot))
     main_router.include_router(setup_user_router(trading_bot))
-    main_router.include_router(setup_catchall_router(trading_bot))
+    main_router.include_router(setup_catchall_router())
 
     return main_router

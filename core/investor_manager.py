@@ -77,11 +77,11 @@ class InvestorManager:
         """Создать папки для всех инвесторов."""
         self.investors_dir.mkdir(parents=True, exist_ok=True)
         for investor_name in self.investors:
-            investor_path = self._get_investor_path(investor_name)
+            investor_path = self.get_investor_path(investor_name)
             investor_path.mkdir(parents=True, exist_ok=True)
 
-    def _get_investor_path(self, name: str) -> Path:
-        """Получить путь к папке инвестора."""
+    def get_investor_path(self, name: str) -> Path:
+        """Get the path to an investor's directory."""
         return self.investors_dir / name
 
     def investor_exists(self, name: str) -> bool:
@@ -210,7 +210,7 @@ class InvestorManager:
         Returns:
             str: operation_id (дата + время + счет)
         """
-        investor_path = self._get_investor_path(investor)
+        investor_path = self.get_investor_path(investor)
         operations_file = investor_path / 'operations.csv'
 
         # Генерировать operation_id
@@ -296,7 +296,7 @@ class InvestorManager:
     def _process_investor_pending_ops(self, investor: str,
                                       trading_client: TradingClient) -> Dict:
         """Обработать pending операции для одного инвестора."""
-        investor_path = self._get_investor_path(investor)
+        investor_path = self.get_investor_path(investor)
         operations_file = investor_path / 'operations.csv'
 
         if not operations_file.exists():
@@ -344,7 +344,7 @@ class InvestorManager:
 
     def _calculate_account_balance(self, investor: str, account: str) -> float:
         """Рассчитать текущий баланс счета."""
-        investor_path = self._get_investor_path(investor)
+        investor_path = self.get_investor_path(investor)
         operations_file = investor_path / 'operations.csv'
 
         balance = 0.0
@@ -512,15 +512,98 @@ class InvestorManager:
 
         return balance
 
+    def _calculate_cumulative_operations(self, investor_name: str, account: str) -> Tuple[float, float]:
+        """Calculate cumulative deposits and withdrawals for an investor account.
+
+        Args:
+            investor_name: Investor name
+            account: Account name (low/medium/high)
+
+        Returns:
+            Tuple[float, float]: (cumulative_deposits, cumulative_withdrawals)
+        """
+        investor_path = self.get_investor_path(investor_name)
+        operations_file = investor_path / 'operations.csv'
+
+        if not operations_file.exists():
+            return 0.0, 0.0
+
+        cumulative_deposits = 0.0
+        cumulative_withdrawals = 0.0
+
+        try:
+            with open(operations_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['account'] != account:
+                        continue
+                    if row['status'] != 'completed':
+                        continue
+
+                    amount = float(row['amount'])
+                    if row['operation'] == 'deposit':
+                        cumulative_deposits += amount
+                    elif row['operation'] == 'withdrawal':
+                        cumulative_withdrawals += amount
+        except Exception as exc:
+            logging.error("Error calculating cumulative operations for %s: %s", investor_name, exc)
+
+        return cumulative_deposits, cumulative_withdrawals
+
+    def _calculate_account_pnl(self, investor_name: str, account: str) -> float:
+        """Calculate realized PnL for an investor account from trades.
+
+        Args:
+            investor_name: Investor name
+            account: Account name (low/medium/high)
+
+        Returns:
+            float: Realized PnL
+        """
+        investor_path = self.get_investor_path(investor_name)
+        trades_file = investor_path / 'trades.csv'
+
+        if not trades_file.exists():
+            return 0.0
+
+        pnl = 0.0
+
+        try:
+            with open(trades_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['account'] != account:
+                        continue
+
+                    action = row['action']
+                    shares = float(row['shares'])
+                    price = float(row['price'])
+
+                    if action == 'BUY':
+                        pnl -= shares * price
+                    elif action == 'SELL':
+                        pnl += shares * price
+        except Exception as exc:
+            logging.error("Error calculating PnL for %s: %s", investor_name, exc)
+
+        return pnl
+
     def get_all_balances(self) -> Dict:
         """Получить балансы всех инвесторов."""
         balances = {}
 
         for investor_name in self.investors:
             balance = self.calculate_investor_balance(investor_name)
+
+            total_pnl = 0.0
+            for account in ['low', 'medium', 'high']:
+                account_pnl = self._calculate_account_pnl(investor_name, account)
+                balance[account]['pnl'] = account_pnl
+                total_pnl += account_pnl
+
             balances[investor_name] = {
                 'total_value': balance['total_value'],
-                'pnl': 0.0,  # TODO: рассчитать PnL из trades.csv
+                'pnl': total_pnl,
                 'accounts': balance
             }
 
@@ -576,7 +659,7 @@ class InvestorManager:
     def _record_trade(self, investor: str, account: str, action: str,
                      ticker: str, shares: float, price: float) -> None:
         """Записать сделку в trades.csv инвестора."""
-        investor_path = self._get_investor_path(investor)
+        investor_path = self.get_investor_path(investor)
         trades_file = investor_path / 'trades.csv'
 
         # Рассчитать amount и total_shares_after
@@ -630,7 +713,7 @@ class InvestorManager:
     def _get_total_investor_shares(self, investor: str, account: str,
                                    ticker: str) -> float:
         """Получить текущее количество акций инвестора."""
-        investor_path = self._get_investor_path(investor)
+        investor_path = self.get_investor_path(investor)
         trades_file = investor_path / 'trades.csv'
 
         if not trades_file.exists():
@@ -704,7 +787,7 @@ class InvestorManager:
 
         for investor_name in self.investors:
             balance = self.calculate_investor_balance(investor_name)
-            investor_path = self._get_investor_path(investor_name)
+            investor_path = self.get_investor_path(investor_name)
             snapshot_file = investor_path / 'balances_snapshot.csv'
 
             file_exists = snapshot_file.exists()
@@ -722,15 +805,20 @@ class InvestorManager:
 
                     for account in ['low', 'medium', 'high']:
                         account_data = balance[account]
+                        cumulative_deps, cumulative_wdrwls = self._calculate_cumulative_operations(
+                            investor_name, account
+                        )
+                        account_pnl = self._calculate_account_pnl(investor_name, account)
+
                         writer.writerow([
                             date.strftime('%Y-%m-%d'),
                             account,
                             f"{account_data.get('cash', 0):.2f}",
                             f"{account_data.get('positions_value', 0):.2f}",
                             f"{account_data['total_value']:.2f}",
-                            f"{account_data.get('pnl', 0):.2f}",
-                            '0.00',  # TODO: рассчитать из operations.csv
-                            '0.00',  # TODO: рассчитать из operations.csv
+                            f"{account_pnl:.2f}",
+                            f"{cumulative_deps:.2f}",
+                            f"{cumulative_wdrwls:.2f}",
                             f"{self.investors[investor_name].high_watermark:.2f}"
                         ])
 

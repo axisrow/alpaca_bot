@@ -53,23 +53,23 @@ class BaseMomentumStrategy:
         """
         data = load_market_data()
 
-        if data is None or data.empty:  # type: ignore[union-attr]
+        if data is None or data.empty:
             raise KeyError("'Close' column not found in data")
-        if 'Close' not in data.columns.get_level_values(0):  # type: ignore[attr-defined]
+        if 'Close' not in data.columns.get_level_values(0):
             raise KeyError("'Close' column not found in data")
 
-        data = cast(pd.DataFrame, data)  # type: ignore[assignment]
+        data = cast(pd.DataFrame, data)
         # Calculate momentum for all tickers: (last_price / first_price - 1)
-        close_prices = data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
-        momentum = close_prices.iloc[-1] / close_prices.iloc[0] - 1  # type: ignore[attr-defined]
+        close_prices = data.xs('Close', level=0, axis=1)
+        momentum = close_prices.iloc[-1] / close_prices.iloc[0] - 1
 
         # Cast to Series for type safety
-        momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
+        momentum = cast(pd.Series, momentum)
 
         # Filter to only tickers in self.tickers, then get top_count
         momentum_filtered = momentum[momentum.index.isin(self.tickers)]
         return (momentum_filtered
-                .nlargest(self.top_count)  # type: ignore[attr-defined]
+                .nlargest(self.top_count)
                 .index
                 .tolist())
 
@@ -170,9 +170,9 @@ class BaseMomentumStrategy:
 
             # Open new positions
             if positions_to_open:
-                account = self.trading_client.get_account()  # type: ignore[no-untyped-call]
-                cash_value = getattr(account, 'cash', 0.0)  # type: ignore[attr-defined]
-                available_cash = float(cast(float, cash_value))  # type: ignore[arg-type]
+                account = self.trading_client.get_account()
+                cash_value = getattr(account, 'cash', 0.0)
+                available_cash = float(cast(float, cash_value))
                 if available_cash <= 0:
                     logging.warning("Insufficient funds: $%.2f", available_cash)
                     return

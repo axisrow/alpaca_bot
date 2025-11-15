@@ -278,23 +278,17 @@ class LiveStrategy:
             logging.error("Error loading market data: %s", exc)
             return tickers[:self.top_count]  # Fallback
 
-        if data is None or data.empty or 'Close' not in data.columns.get_level_values(0):  # type: ignore
-            logging.warning("No data for signals calculation")
+        if data is None or data.empty or 'Close' not in data.columns.get_level_values(0):            logging.warning("No data for signals calculation")
             return tickers[:self.top_count]
 
-        data = cast(pd.DataFrame, data)  # type: ignore
-        try:
+        data = cast(pd.DataFrame, data)        try:
             # Calculate momentum for all tickers, but select only from provided tickers
             momentum = (data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
-                        .dropna(axis='columns')  # type: ignore
-                        .pct_change(periods=len(data)-1)  # type: ignore
-                        .iloc[-1])  # type: ignore
-            # Filter to only tickers in the provided list, then get top_count
+                        .dropna(axis='columns')                        .pct_change(periods=len(data)-1)                        .iloc[-1])            # Filter to only tickers in the provided list, then get top_count
             momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
             momentum_filtered = momentum[momentum.index.isin(tickers)]
             return (momentum_filtered
-                    .nlargest(self.top_count)  # type: ignore
-                    .index
+                    .nlargest(self.top_count)                    .index
                     .tolist())
         except Exception as exc:
             logging.error("Error calculating signals: %s", exc)
@@ -307,7 +301,7 @@ class LiveStrategy:
 
         positions = set()
         for investor_name in self.investor_manager.investors:
-            investor_path = self.investor_manager._get_investor_path(investor_name)
+            investor_path = self.investor_manager.get_investor_path(investor_name)
             trades_file = investor_path / 'trades.csv'
 
             if not trades_file.exists():
@@ -346,21 +340,16 @@ class LiveStrategy:
                     try:
                         request = StockBarsRequest(
                             symbol_or_symbols=[ticker],
-                            timeframe=TimeFrame.Minute,  # type: ignore
-                            limit=1
+                            timeframe=TimeFrame.Minute,                            limit=1
                         )
                         bars = self.data_client.get_stock_bars(request)
-                        price = float(bars[ticker][-1].close) if bars and ticker in bars else 0.0  # type: ignore
-                    except Exception:  # pylint: disable=broad-exception-caught
+                        price = float(bars[ticker][-1].close) if bars and ticker in bars else 0.0                    except Exception:  # pylint: disable=broad-exception-caught
                         price = 0.0
 
                     # Получить общее количество акций для счета
-                    positions = self.trading_client.get_all_positions()  # type: ignore
-                    total_shares = 0.0
+                    positions = self.trading_client.get_all_positions()                    total_shares = 0.0
                     for pos in positions:
-                        if pos.symbol == ticker:  # type: ignore
-                            total_shares = float(pos.qty)  # type: ignore
-                            break
+                        if pos.symbol == ticker:                            total_shares = float(pos.qty)                            break
 
                     if total_shares > 0:
                         self.investor_manager.distribute_trade_to_investors(
@@ -399,15 +388,10 @@ class LiveStrategy:
                     # Дождаться исполнения и получить реальную цену
                     price = cash_per_position
                     shares = 1.0
-                    if order_response and order_response.id:  # type: ignore
-                        try:
+                    if order_response and order_response.id:                        try:
                             max_attempts = 10
                             for _ in range(max_attempts):
-                                order_status = self.trading_client.get_order_by_id(order_response.id)  # type: ignore
-                                if order_status and order_status.filled_avg_price:  # type: ignore
-                                    price = float(order_status.filled_avg_price)  # type: ignore
-                                    shares = float(order_status.filled_qty or 1)  # type: ignore
-                                    break
+                                order_status = self.trading_client.get_order_by_id(order_response.id)                                if order_status and order_status.filled_avg_price:                                    price = float(order_status.filled_avg_price)                                    shares = float(order_status.filled_qty or 1)                                    break
                                 time.sleep(0.5)
                         except Exception:  # pylint: disable=broad-exception-caught
                             pass

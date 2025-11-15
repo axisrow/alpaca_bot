@@ -3,11 +3,8 @@ from aiogram import Router
 from aiogram.types import Message
 
 
-def setup_catchall_router(trading_bot):
+def setup_catchall_router():
     """Setup router with catch-all handler for unknown messages.
-
-    Args:
-        trading_bot: Trading bot instance (for compatibility)
 
     Returns:
         Router: Configured router with catch-all handler

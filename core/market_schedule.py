@@ -41,7 +41,7 @@ class MarketSchedule:
 
         try:
             clock = self.trading_client.get_clock()
-            if clock.is_open:  # type: ignore[attr-defined]
+            if clock.is_open:
                 return True, "market is open"
 
             if self.MARKET_OPEN <= current_time <= self.MARKET_CLOSE:

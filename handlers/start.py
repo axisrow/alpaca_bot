@@ -4,11 +4,8 @@ from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardRemove
 
 
-def setup_start_router(trading_bot):
+def setup_start_router():
     """Setup router with start command.
-
-    Args:
-        trading_bot: Trading bot instance
 
     Returns:
         Router: Configured router with start handler

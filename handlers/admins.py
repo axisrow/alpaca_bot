@@ -39,7 +39,7 @@ def setup_admin_router(trading_bot):
     @telegram_handler("❌ Error running test rebalance")
     async def cmd_test_rebalance(message: Message):
         """Handle /test_rebalance command (dry run for all strategies)."""
-        loading_msg = await message.answer("⏳ Загружаю данные для ребалансировки...")
+        loading_msg = await message.answer("⏳ Loading rebalance data...")
         previews = await asyncio.to_thread(trading_bot.get_rebalance_preview)
 
         if not previews:
@@ -457,7 +457,7 @@ def setup_admin_router(trading_bot):
             return
 
         # Get investor path
-        investor_path = trading_bot.investor_manager._get_investor_path(investor_name)
+        investor_path = trading_bot.investor_manager.get_investor_path(investor_name)
 
         # Find and send files
         files_found = []
