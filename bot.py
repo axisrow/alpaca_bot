@@ -3,7 +3,15 @@ import asyncio
 import logging
 import signal
 
-from core import TradingBot, TelegramBot, TelegramLoggingHandler
+from core.alpaca_bot import create_trading_bot_state, start, stop, set_telegram_bot_state
+from core.telegram_bot import (
+    create_telegram_bot_state,
+    setup_handlers,
+    send_startup_message,
+    start as telegram_start,
+    stop as telegram_stop
+)
+from core.telegram_logging import create_telegram_logging_handler
 
 # Configure logging
 logging.basicConfig(
@@ -18,33 +26,39 @@ logging.basicConfig(
 
 async def main() -> None:
     """Main program function."""
-    trading_bot = TradingBot()
-    telegram_bot = TelegramBot(trading_bot)
+    # Create trading bot state
+    trading_bot_state = create_trading_bot_state()
+
+    # Create telegram bot state
+    telegram_bot_state = create_telegram_bot_state(trading_bot_state)
 
     # Set reference to Telegram bot in trading bot
-    trading_bot.set_telegram_bot(telegram_bot)
+    set_telegram_bot_state(trading_bot_state, telegram_bot_state)
 
     # Get reference to main event loop
     loop = asyncio.get_running_loop()
 
     # Add Telegram logging handler for ERROR logs
-    telegram_handler = TelegramLoggingHandler(telegram_bot.bot, loop)
+    telegram_handler = create_telegram_logging_handler(telegram_bot_state['bot'], loop)
     logging.getLogger().addHandler(telegram_handler)
 
+    # Setup telegram handlers
+    setup_handlers(telegram_bot_state)
+
     # Start trading bot (starts scheduler)
-    trading_bot.start()
+    start(trading_bot_state)
 
     # Send startup message to admins
-    await telegram_bot.send_startup_message()
+    await send_startup_message(telegram_bot_state)
 
     # Start Telegram bot in async task
-    telegram_task = asyncio.create_task(telegram_bot.start())
+    telegram_task = asyncio.create_task(telegram_start(telegram_bot_state))
 
     # Setup signal handlers
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig,
-            lambda: asyncio.create_task(shutdown(trading_bot, telegram_bot))
+            lambda: asyncio.create_task(shutdown(trading_bot_state, telegram_bot_state))
         )
 
     try:
@@ -53,17 +67,16 @@ async def main() -> None:
         logging.info("Telegram task cancelled")
 
 
-async def shutdown(trading_bot: TradingBot,
-                   telegram_bot: TelegramBot) -> None:
+async def shutdown(trading_bot_state, telegram_bot_state) -> None:
     """Graceful shutdown of all components.
 
     Args:
-        trading_bot: Trading bot instance
-        telegram_bot: Telegram bot instance
+        trading_bot_state: Trading bot state
+        telegram_bot_state: Telegram bot state
     """
     logging.info("Shutting down...")
-    trading_bot.stop()
-    await telegram_bot.stop()
+    stop(trading_bot_state)
+    await telegram_stop(telegram_bot_state)
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     for task in tasks:
         task.cancel()

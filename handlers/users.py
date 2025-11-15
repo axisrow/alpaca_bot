@@ -52,9 +52,10 @@ def setup_user_router(trading_bot):
     async def show_portfolio(message: Message):
         """Handle /portfolio command."""
         # Get portfolio data from TradingBot (by strategy)
+        from core.alpaca_bot import get_portfolio_status
         loading_msg = await message.answer("⏳ Получаю данные портфеля...")
         positions_by_strategy, total_value, total_pnl = await asyncio.to_thread(
-            trading_bot.get_portfolio_status
+            get_portfolio_status, trading_bot
         )
 
         if not positions_by_strategy:
@@ -96,8 +97,9 @@ def setup_user_router(trading_bot):
     @telegram_handler("❌ Error retrieving trading statistics")
     async def show_stats(message: Message):
         """Handle /stats command."""
+        from core.alpaca_bot import get_trading_stats
         loading_msg = await message.answer("⏳ Загружаю статистику...")
-        stats = await asyncio.to_thread(trading_bot.get_trading_stats)
+        stats = await asyncio.to_thread(get_trading_stats, trading_bot)
 
         if not stats:
             await loading_msg.delete()
@@ -116,7 +118,8 @@ def setup_user_router(trading_bot):
     @telegram_handler("❌ Error retrieving settings")
     async def show_settings(message: Message):
         """Handle /settings command."""
-        settings = trading_bot.get_settings()
+        from core.alpaca_bot import get_settings
+        settings = get_settings(trading_bot)
 
         if not settings:
             raise ValueError("Settings unavailable")

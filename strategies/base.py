@@ -1,7 +1,7 @@
-"""Base momentum strategy class."""
+"""Base momentum strategy module with functional programming approach."""
 import logging
 import time
-from typing import List, cast
+from typing import List, Dict, Any, cast
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
@@ -12,182 +12,226 @@ from core.data_loader import load_market_data
 from core.utils import retry_on_exception, get_positions
 
 
-class BaseMomentumStrategy:
-    """Base class implementing momentum-based trading strategy.
+# Strategy configuration type
+StrategyConfig = Dict[str, Any]
 
-    Subclasses should define:
-    - API_KEY: Alpaca API key
-    - SECRET_KEY: Alpaca secret key
-    - PAPER: Paper trading flag (True/False)
-    - TOP_COUNT: Number of top stocks to hold
-    - ENABLED: Strategy enabled flag
-    - TICKERS: Ticker universe ('snp500_only', 'all', etc.)
+
+def create_strategy_config(
+    api_key: str,
+    secret_key: str,
+    paper: bool = True,
+    top_count: int = 50,
+    enabled: bool = True,
+    tickers_mode: str = 'snp500_only'
+) -> StrategyConfig:
+    """Create strategy configuration dictionary.
+
+    Args:
+        api_key: Alpaca API key
+        secret_key: Alpaca secret key
+        paper: Paper trading flag
+        top_count: Number of top stocks to hold
+        enabled: Strategy enabled flag
+        tickers_mode: Ticker universe mode
+
+    Returns:
+        Strategy configuration dictionary
     """
+    return {
+        'api_key': api_key,
+        'secret_key': secret_key,
+        'paper': paper,
+        'top_count': top_count,
+        'enabled': enabled,
+        'tickers_mode': tickers_mode
+    }
 
-    # Default configuration (should be overridden in subclasses)
-    API_KEY = ""
-    SECRET_KEY = ""
-    PAPER = True
-    TOP_COUNT = 50
-    ENABLED = True
-    TICKERS = 'snp500_only'
 
-    def __init__(self, trading_client: TradingClient, tickers: List[str], top_count: int = 50):
-        """Initialize strategy.
+def create_strategy_state(
+    trading_client: TradingClient,
+    tickers: List[str],
+    top_count: int = 50
+) -> Dict[str, Any]:
+    """Create strategy state dictionary.
 
-        Args:
-            trading_client: Alpaca API client
-            tickers: List of tickers to analyze
-            top_count: Number of top stocks to select
-        """
-        self.trading_client = trading_client
-        self.tickers = tickers
-        self.top_count = top_count
+    Args:
+        trading_client: Alpaca API client
+        tickers: List of tickers to analyze
+        top_count: Number of top stocks to select
 
-    @retry_on_exception()
-    def get_signals(self) -> List[str]:
-        """Get trading signals - top N stocks by momentum from self.tickers only.
+    Returns:
+        Strategy state dictionary
+    """
+    return {
+        'trading_client': trading_client,
+        'tickers': tickers,
+        'top_count': top_count
+    }
 
-        Returns:
-            List[str]: List of tickers with highest momentum
-        """
-        data = load_market_data()
 
-        if data is None or data.empty:  # type: ignore[union-attr]
-            raise KeyError("'Close' column not found in data")
-        if 'Close' not in data.columns.get_level_values(0):  # type: ignore[attr-defined]
-            raise KeyError("'Close' column not found in data")
+@retry_on_exception()
+def get_signals(state: Dict[str, Any]) -> List[str]:
+    """Get trading signals - top N stocks by momentum.
 
-        data = cast(pd.DataFrame, data)  # type: ignore[assignment]
-        # Calculate momentum for all tickers: (last_price / first_price - 1)
-        close_prices = data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
-        momentum = close_prices.iloc[-1] / close_prices.iloc[0] - 1  # type: ignore[attr-defined]
+    Args:
+        state: Strategy state dictionary
 
-        # Cast to Series for type safety
-        momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
+    Returns:
+        List of tickers with highest momentum
+    """
+    data = load_market_data()
 
-        # Filter to only tickers in self.tickers, then get top_count
-        momentum_filtered = momentum[momentum.index.isin(self.tickers)]
-        return (momentum_filtered
-                .nlargest(self.top_count)  # type: ignore[attr-defined]
-                .index
-                .tolist())
+    if data is None or data.empty:  # type: ignore[union-attr]
+        raise KeyError("'Close' column not found in data")
+    if 'Close' not in data.columns.get_level_values(0):  # type: ignore[attr-defined]
+        raise KeyError("'Close' column not found in data")
 
-    def close_positions(self, positions: List[str]) -> None:
-        """Close specified positions.
+    data = cast(pd.DataFrame, data)  # type: ignore[assignment]
+    # Calculate momentum for all tickers: (last_price / first_price - 1)
+    close_prices = data.xs('Close', level=0, axis=1)  # type: ignore[attr-defined]
+    momentum = close_prices.iloc[-1] / close_prices.iloc[0] - 1  # type: ignore[attr-defined]
 
-        Args:
-            positions: List of tickers to close
-        """
-        failed_closures = []
-        for ticker in positions:
-            try:
-                self.trading_client.close_position(ticker)
-                logging.info("Position %s closed", ticker)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error(
-                    "Error closing position %s: %s",
-                    ticker,
-                    exc,
-                    exc_info=True
-                )
-                failed_closures.append((ticker, str(exc)))
+    # Cast to Series for type safety
+    momentum = cast(pd.Series, momentum)  # type: ignore[assignment]
 
-        if failed_closures:
-            logging.warning(
-                "Failed to close %d position(s): %s",
-                len(failed_closures),
-                [(t, e.split('\n')[0]) for t, e in failed_closures]
-            )
+    # Filter to only tickers in state['tickers'], then get top_count
+    momentum_filtered = momentum[momentum.index.isin(state['tickers'])]
+    return (momentum_filtered
+            .nlargest(state['top_count'])  # type: ignore[attr-defined]
+            .index
+            .tolist())
 
-    def open_positions(self, tickers: List[str],
-                       cash_per_position: float) -> None:
-        """Open new positions.
 
-        Args:
-            tickers: List of tickers to open
-            cash_per_position: Position size in dollars
-        """
-        failed_opens = []
-        for ticker in tickers:
-            try:
-                order = MarketOrderRequest(
-                    symbol=ticker,
-                    notional=round(cash_per_position, 2),
-                    side=OrderSide.BUY,
-                    type=OrderType.MARKET,
-                    time_in_force=TimeInForce.DAY
-                )
-                self.trading_client.submit_order(order)
-                logging.info(
-                    "Opened position %s for $%.2f",
-                    ticker,
-                    cash_per_position
-                )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logging.error(
-                    "Error opening position %s: %s",
-                    ticker,
-                    exc,
-                    exc_info=True
-                )
-                failed_opens.append((ticker, str(exc)))
+def close_positions(state: Dict[str, Any], positions: List[str]) -> None:
+    """Close specified positions.
 
-        if failed_opens:
-            logging.warning(
-                "Failed to open %d position(s): %s",
-                len(failed_opens),
-                [(t, e.split('\n')[0]) for t, e in failed_opens]
-            )
+    Args:
+        state: Strategy state dictionary
+        positions: List of tickers to close
+    """
+    trading_client = state['trading_client']
+    failed_closures = []
 
-    def rebalance(self) -> None:
-        """Rebalance portfolio."""
+    for ticker in positions:
         try:
-            logging.info("Starting portfolio rebalancing")
-
-            # Get trading strategy signals
-            top_tickers = self.get_signals()
-            logging.info("Top %d stocks by momentum: %s", self.top_count, ', '.join(top_tickers))
-
-            # Get current positions
-            current_positions = get_positions(self.trading_client)
-            logging.info("Current positions: %s", current_positions)
-
-            # Determine positions to close and open
-            top_tickers_set = set(top_tickers)
-            current_positions_set = set(current_positions)
-
-            positions_to_close = list(current_positions_set - top_tickers_set)
-            positions_to_open = list(top_tickers_set - current_positions_set)
-
-            logging.info("Positions to close: %s", positions_to_close)
-            logging.info("Positions to open: %s", positions_to_open)
-
-            # Close unneeded positions
-            if positions_to_close:
-                self.close_positions(positions_to_close)
-                time.sleep(5)
-
-            # Open new positions
-            if positions_to_open:
-                account = self.trading_client.get_account()  # type: ignore[no-untyped-call]
-                cash_value = getattr(account, 'cash', 0.0)  # type: ignore[attr-defined]
-                available_cash = float(cast(float, cash_value))  # type: ignore[arg-type]
-                if available_cash <= 0:
-                    logging.warning("Insufficient funds: $%.2f", available_cash)
-                    return
-
-                position_size = available_cash / len(positions_to_open)
-                if position_size < 1:
-                    logging.warning(
-                        "Position size too small: $%.2f",
-                        position_size
-                    )
-                    return
-
-                self.open_positions(positions_to_open, position_size)
-
-            logging.info("Portfolio rebalancing completed successfully")
-
+            trading_client.close_position(ticker)
+            logging.info("Position %s closed", ticker)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Error during rebalancing: %s", exc, exc_info=True)
+            logging.error(
+                "Error closing position %s: %s",
+                ticker,
+                exc,
+                exc_info=True
+            )
+            failed_closures.append((ticker, str(exc)))
+
+    if failed_closures:
+        logging.warning(
+            "Failed to close %d position(s): %s",
+            len(failed_closures),
+            [(t, e.split('\n')[0]) for t, e in failed_closures]
+        )
+
+
+def open_positions(
+    state: Dict[str, Any],
+    tickers: List[str],
+    cash_per_position: float
+) -> None:
+    """Open new positions.
+
+    Args:
+        state: Strategy state dictionary
+        tickers: List of tickers to open
+        cash_per_position: Position size in dollars
+    """
+    trading_client = state['trading_client']
+    failed_opens = []
+
+    for ticker in tickers:
+        try:
+            order = MarketOrderRequest(
+                symbol=ticker,
+                notional=round(cash_per_position, 2),
+                side=OrderSide.BUY,
+                type=OrderType.MARKET,
+                time_in_force=TimeInForce.DAY
+            )
+            trading_client.submit_order(order)
+            logging.info(
+                "Opened position %s for $%.2f",
+                ticker,
+                cash_per_position
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error(
+                "Error opening position %s: %s",
+                ticker,
+                exc,
+                exc_info=True
+            )
+            failed_opens.append((ticker, str(exc)))
+
+    if failed_opens:
+        logging.warning(
+            "Failed to open %d position(s): %s",
+            len(failed_opens),
+            [(t, e.split('\n')[0]) for t, e in failed_opens]
+        )
+
+
+def rebalance(state: Dict[str, Any]) -> None:
+    """Rebalance portfolio.
+
+    Args:
+        state: Strategy state dictionary
+    """
+    try:
+        logging.info("Starting portfolio rebalancing")
+
+        # Get trading strategy signals
+        top_tickers = get_signals(state)
+        logging.info("Top %d stocks by momentum: %s", state['top_count'], ', '.join(top_tickers))
+
+        # Get current positions
+        current_positions = get_positions(state['trading_client'])
+        logging.info("Current positions: %s", current_positions)
+
+        # Determine positions to close and open
+        top_tickers_set = set(top_tickers)
+        current_positions_set = set(current_positions)
+
+        positions_to_close = list(current_positions_set - top_tickers_set)
+        positions_to_open = list(top_tickers_set - current_positions_set)
+
+        logging.info("Positions to close: %s", positions_to_close)
+        logging.info("Positions to open: %s", positions_to_open)
+
+        # Close unneeded positions
+        if positions_to_close:
+            close_positions(state, positions_to_close)
+            time.sleep(5)
+
+        # Open new positions
+        if positions_to_open:
+            account = state['trading_client'].get_account()  # type: ignore[no-untyped-call]
+            cash_value = getattr(account, 'cash', 0.0)  # type: ignore[attr-defined]
+            available_cash = float(cast(float, cash_value))  # type: ignore[arg-type]
+            if available_cash <= 0:
+                logging.warning("Insufficient funds: $%.2f", available_cash)
+                return
+
+            position_size = available_cash / len(positions_to_open)
+            if position_size < 1:
+                logging.warning(
+                    "Position size too small: $%.2f",
+                    position_size
+                )
+                return
+
+            open_positions(state, positions_to_open, position_size)
+
+        logging.info("Portfolio rebalancing completed successfully")
+
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logging.error("Error during rebalancing: %s", exc, exc_info=True)

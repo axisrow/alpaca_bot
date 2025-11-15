@@ -12,11 +12,11 @@ from core.data_loader import clear_cache
 from core.utils import telegram_handler
 
 
-def setup_admin_router(trading_bot):
+def setup_admin_router(trading_bot_state):
     """Setup router with admin commands.
 
     Args:
-        trading_bot: Trading bot instance
+        trading_bot_state: Trading bot state dictionary
 
     Returns:
         Router: Configured router with handlers
@@ -27,11 +27,12 @@ def setup_admin_router(trading_bot):
     @telegram_handler("❌ Error retrieving rebalance information")
     async def cmd_check_rebalance(message: Message):
         """Handle /check_rebalance command."""
-        days_until = trading_bot.calculate_days_until_rebalance()
-        next_date = trading_bot.get_next_rebalance_date()
-        msg = trading_bot.rebalance_flag.get_countdown_message(
-            days_until, next_date
-        )
+        from core.alpaca_bot import calculate_days_until_rebalance, get_next_rebalance_date
+        from core.rebalance_flag import get_countdown_message
+
+        days_until = calculate_days_until_rebalance(trading_bot_state)
+        next_date = get_next_rebalance_date(trading_bot_state)
+        msg = get_countdown_message(days_until, next_date)
 
         await message.answer(msg, parse_mode="HTML")
 
@@ -39,8 +40,10 @@ def setup_admin_router(trading_bot):
     @telegram_handler("❌ Error running test rebalance")
     async def cmd_test_rebalance(message: Message):
         """Handle /test_rebalance command (dry run for all strategies)."""
+        from core.alpaca_bot import get_rebalance_preview
+
         loading_msg = await message.answer("⏳ Загружаю данные для ребалансировки...")
-        previews = await asyncio.to_thread(trading_bot.get_rebalance_preview)
+        previews = await asyncio.to_thread(get_rebalance_preview, trading_bot_state)
 
         if not previews:
             await loading_msg.delete()
@@ -73,12 +76,8 @@ def setup_admin_router(trading_bot):
             msg += f"📈 Positions to Open: {len(positions_to_open)}\n"
 
             # Calculate total value to close
-            total_close_value = 0.0
-            for symbol in positions_to_close:
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    total_close_value += market_value
+            from core.alpaca_bot import calculate_total_close_value
+            total_close_value = calculate_total_close_value(positions_to_close, positions_dict)
 
             # Calculate total value to open
             total_open_value = len(positions_to_open) * position_size if positions_to_open else 0.0
@@ -132,7 +131,9 @@ def setup_admin_router(trading_bot):
     @telegram_handler("❌ Error approving rebalance")
     async def approve_rebalance(message: Message):
         """Handle rebalance approval."""
-        if not trading_bot.awaiting_rebalance_confirmation:
+        from core.alpaca_bot import execute_rebalance, set_awaiting_rebalance_confirmation
+
+        if not trading_bot_state.get('awaiting_rebalance_confirmation'):
             await message.answer("❌ No pending rebalance request")
             return
 
@@ -140,8 +141,8 @@ def setup_admin_router(trading_bot):
 
         # Execute rebalance
         logging.info("Executing rebalance (approved by admin)")
-        trading_bot.execute_rebalance()
-        trading_bot.awaiting_rebalance_confirmation = False
+        await asyncio.to_thread(execute_rebalance, trading_bot_state)
+        set_awaiting_rebalance_confirmation(trading_bot_state, False)
 
         await message.answer("✅ Portfolio rebalancing completed successfully")
 
@@ -149,28 +150,20 @@ def setup_admin_router(trading_bot):
     @telegram_handler("❌ Error rejecting rebalance")
     async def reject_rebalance(message: Message):
         """Handle rebalance rejection."""
-        if not trading_bot.awaiting_rebalance_confirmation:
+        from core.alpaca_bot import set_awaiting_rebalance_confirmation
+
+        if not trading_bot_state.get('awaiting_rebalance_confirmation'):
             await message.answer("❌ No pending rebalance request")
             return
 
         await message.answer("❌ Rebalance rejected")
         logging.info("Rebalance rejected by admin")
-        trading_bot.awaiting_rebalance_confirmation = False
+        set_awaiting_rebalance_confirmation(trading_bot_state, False)
 
     @router.message(Command("deposit"))
     @telegram_handler("❌ Error processing deposit")
     async def cmd_deposit(message: Message):
-        """Handle /deposit command - deposit money to investor account.
-
-        Usage: /deposit <name> <amount> [account]
-
-        Examples:
-        /deposit Cherry 10000          → distribute by default (45/35/20)
-        /deposit Cherry 5000 low       → deposit to low account only
-        /deposit Cherry 3000 medium    → deposit to medium account only
-
-        account: low, medium, high (optional)
-        """
+        """Handle /deposit command."""
         # Admin only
         if message.from_user.id not in ADMIN_IDS:
             await message.answer("❌ Admin only")
@@ -201,20 +194,29 @@ def setup_admin_router(trading_bot):
 
         # Validate account
         if account and account not in ['low', 'medium', 'high']:
-            await message.answer(
-                "❌ Invalid account. Use: low, medium, or high"
-            )
+            await message.answer("❌ Invalid account. Use: low, medium, or high")
+            return
+
+        # Get investor manager state
+        investor_manager_state = trading_bot_state.get('investor_manager_state')
+        if not investor_manager_state:
+            await message.answer("❌ Investor manager not available")
             return
 
         # Check investor exists
-        if not trading_bot.investor_manager.investor_exists(investor_name):
+        from core.investor_manager import investor_exists, deposit
+        if not investor_exists(investor_manager_state, investor_name):
             await message.answer(f"❌ Investor '{investor_name}' not found")
             return
 
         # Create pending deposit operation
         try:
-            operation_ids = trading_bot.investor_manager.deposit(
-                investor_name, amount, account, datetime.now()
+            operation_ids = deposit(
+                investor_manager_state,
+                investor_name,
+                amount,
+                account,
+                datetime.now()
             )
         except Exception as exc:
             await message.answer(f"❌ Error: {str(exc)}")
@@ -227,11 +229,9 @@ def setup_admin_router(trading_bot):
         msg += f"<b>Status:</b> pending\n\n"
 
         if account:
-            # Specific account
             msg += f"<b>Account:</b> {account}\n"
             msg += f"<b>Amount:</b> ${amount:,.2f}\n"
         else:
-            # Default distribution
             msg += "<b>Distribution:</b>\n"
             msg += f"  • Low (45%): ${amount * 0.45:,.2f}\n"
             msg += f"  • Medium (35%): ${amount * 0.35:,.2f}\n"
@@ -244,16 +244,7 @@ def setup_admin_router(trading_bot):
     @router.message(Command("withdraw"))
     @telegram_handler("❌ Error processing withdrawal")
     async def cmd_withdraw(message: Message):
-        """Handle /withdraw command - withdraw money from investor account.
-
-        Usage: /withdraw <name> <amount> [account]
-
-        Examples:
-        /withdraw Cherry 1000 medium   → withdraw 1000 from medium account
-        /withdraw Cherry 5000          → withdraw proportionally (45/35/20)
-
-        account: low, medium, high (optional)
-        """
+        """Handle /withdraw command."""
         # Admin only
         if message.from_user.id not in ADMIN_IDS:
             await message.answer("❌ Admin only")
@@ -284,20 +275,27 @@ def setup_admin_router(trading_bot):
 
         # Validate account
         if account and account not in ['low', 'medium', 'high']:
-            await message.answer(
-                "❌ Invalid account. Use: low, medium, or high"
-            )
+            await message.answer("❌ Invalid account. Use: low, medium, or high")
             return
 
+        # Get investor manager state
+        investor_manager_state = trading_bot_state.get('investor_manager_state')
+        if not investor_manager_state:
+            await message.answer("❌ Investor manager not available")
+            return
+
+        from core.investor_manager import (
+            investor_exists, calculate_investor_balance,
+            check_and_calculate_fees, withdraw
+        )
+
         # Check investor exists
-        if not trading_bot.investor_manager.investor_exists(investor_name):
+        if not investor_exists(investor_manager_state, investor_name):
             await message.answer(f"❌ Investor '{investor_name}' not found")
             return
 
         # Check balance
-        balance = trading_bot.investor_manager.calculate_investor_balance(
-            investor_name
-        )
+        balance = calculate_investor_balance(investor_manager_state, investor_name)
 
         if account:
             # Withdraw from specific account
@@ -321,15 +319,20 @@ def setup_admin_router(trading_bot):
                 return
 
         # Check for fee at withdrawal
-        fee_info = trading_bot.investor_manager.check_and_calculate_fees(
+        fee_info = check_and_calculate_fees(
+            investor_manager_state,
             at_rebalance=False,
             for_investor=investor_name
         )
 
         # Create pending withdrawal operation
         try:
-            operation_ids = trading_bot.investor_manager.withdraw(
-                investor_name, amount, account, datetime.now()
+            operation_ids = withdraw(
+                investor_manager_state,
+                investor_name,
+                amount,
+                account,
+                datetime.now()
             )
         except Exception as exc:
             await message.answer(f"❌ Error: {str(exc)}")
@@ -342,11 +345,9 @@ def setup_admin_router(trading_bot):
         msg += f"<b>Status:</b> pending\n\n"
 
         if account:
-            # Specific account
             msg += f"<b>Account:</b> {account}\n"
             msg += f"<b>Amount:</b> ${amount:,.2f}\n"
         else:
-            # Proportionally
             msg += "<b>Distribution:</b>\n"
             msg += f"  • Low (45%): ${amount * 0.45:,.2f}\n"
             msg += f"  • Medium (35%): ${amount * 0.35:,.2f}\n"
@@ -365,7 +366,7 @@ def setup_admin_router(trading_bot):
     @router.message(Command("balance_check"))
     @telegram_handler("❌ Error checking balance integrity")
     async def cmd_balance_check(message: Message):
-        """Handle /balance_check command - verify balance integrity."""
+        """Handle /balance_check command."""
         # Admin only
         if message.from_user.id not in ADMIN_IDS:
             await message.answer("❌ Admin only")
@@ -374,16 +375,24 @@ def setup_admin_router(trading_bot):
         loading_msg = await message.answer("⏳ Checking balance integrity...")
 
         # Get trading client for live strategy
-        if 'live' not in trading_bot.strategies:
+        if 'live' not in trading_bot_state['strategies']:
             await loading_msg.delete()
             await message.answer("❌ Live strategy not available")
             return
 
-        trading_client = trading_bot.strategies['live']['client']
+        trading_client = trading_bot_state['strategies']['live']['client']
+        investor_manager_state = trading_bot_state.get('investor_manager_state')
+
+        if not investor_manager_state:
+            await loading_msg.delete()
+            await message.answer("❌ Investor manager not available")
+            return
 
         # Check balance integrity
+        from core.investor_manager import verify_balance_integrity
         is_valid, msg_text = await asyncio.to_thread(
-            trading_bot.investor_manager.verify_balance_integrity,
+            verify_balance_integrity,
+            investor_manager_state,
             trading_client
         )
 
@@ -394,13 +403,18 @@ def setup_admin_router(trading_bot):
     @router.message(Command("investors"))
     @telegram_handler("❌ Error retrieving investors data")
     async def cmd_investors(message: Message):
-        """Handle /investors command - show all investors balances."""
+        """Handle /investors command."""
         loading_msg = await message.answer("⏳ Loading investors data...")
 
+        investor_manager_state = trading_bot_state.get('investor_manager_state')
+        if not investor_manager_state:
+            await loading_msg.delete()
+            await message.answer("❌ Investor manager not available")
+            return
+
         # Get all balances
-        balances = await asyncio.to_thread(
-            trading_bot.investor_manager.get_all_balances
-        )
+        from core.investor_manager import get_all_balances
+        balances = await asyncio.to_thread(get_all_balances, investor_manager_state)
 
         if not balances:
             await loading_msg.delete()
@@ -433,11 +447,7 @@ def setup_admin_router(trading_bot):
     @router.message(Command("export"))
     @telegram_handler("❌ Error exporting data")
     async def cmd_export(message: Message):
-        """Handle /export command - download investor CSV files.
-
-        Usage: /export <name>
-        Files: operations.csv, trades.csv
-        """
+        """Handle /export command."""
         # Admin only
         if message.from_user.id not in ADMIN_IDS:
             await message.answer("❌ Admin only")
@@ -451,13 +461,19 @@ def setup_admin_router(trading_bot):
 
         investor_name = parts[1]
 
+        investor_manager_state = trading_bot_state.get('investor_manager_state')
+        if not investor_manager_state:
+            await message.answer("❌ Investor manager not available")
+            return
+
+        from core.investor_manager import investor_exists
         # Check investor exists
-        if not trading_bot.investor_manager.investor_exists(investor_name):
+        if not investor_exists(investor_manager_state, investor_name):
             await message.answer(f"❌ Investor '{investor_name}' not found")
             return
 
         # Get investor path
-        investor_path = trading_bot.investor_manager._get_investor_path(investor_name)
+        investor_path = investor_manager_state['investors_dir'] / investor_name
 
         # Find and send files
         files_found = []
