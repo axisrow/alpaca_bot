@@ -10,8 +10,8 @@
 
 ```
 Columns: MultiIndex с 2 уровнями
-├─ Level 0 (names='Ticker'): ['AAPL', 'GOOGL', 'MSFT', ...]  <- Тикеры
-└─ Level 1 (names='Price'): ['Open', 'High', 'Low', 'Close', 'Volume']  <- OHLCV
+├─ Level 0 (names='Price'): ['Open', 'High', 'Low', 'Close', 'Volume']  <- OHLCV
+└─ Level 1 (names='Ticker'): ['AAPL', 'GOOGL', 'MSFT', ...]  <- Тикеры
 ```
 
 **Формат:**
