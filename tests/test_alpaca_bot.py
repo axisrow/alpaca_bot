@@ -1,19 +1,18 @@
-"""Unit tests for TradingBot class."""
-import pytest
-from datetime import datetime
-from unittest.mock import MagicMock, patch, ANY
-from core.alpaca_bot import TradingBot
+"""Unit tests for trading bot helper functions."""
+from unittest.mock import MagicMock
+
+from core.alpaca_bot import calculate_total_close_value
 
 
 
 
 class TestCalculateTotalCloseValue:
-    """Tests for _calculate_total_close_value helper method."""
+    """Tests for calculate_total_close_value helper."""
 
     def test_calculate_total_close_value_empty_list(self):
         """Test with empty positions to close."""
         positions_dict = {}
-        result = TradingBot._calculate_total_close_value([], positions_dict)
+        result = calculate_total_close_value([], positions_dict)
         assert result == 0.0
 
     def test_calculate_total_close_value_single_position(self):
@@ -22,7 +21,7 @@ class TestCalculateTotalCloseValue:
         pos.market_value = 1000.0
 
         positions_dict = {'AAPL': pos}
-        result = TradingBot._calculate_total_close_value(['AAPL'], positions_dict)
+        result = calculate_total_close_value(['AAPL'], positions_dict)
         assert result == 1000.0
 
     def test_calculate_total_close_value_multiple_positions(self):
@@ -39,7 +38,7 @@ class TestCalculateTotalCloseValue:
             'MSFT': pos2,
             'GOOGL': pos3
         }
-        result = TradingBot._calculate_total_close_value(
+        result = calculate_total_close_value(
             ['AAPL', 'MSFT', 'GOOGL'],
             positions_dict
         )
@@ -55,7 +54,7 @@ class TestCalculateTotalCloseValue:
             'AAPL': pos1,
             'MSFT': pos2
         }
-        result = TradingBot._calculate_total_close_value(
+        result = calculate_total_close_value(
             ['AAPL', 'MSFT'],
             positions_dict
         )
@@ -68,11 +67,10 @@ class TestCalculateTotalCloseValue:
         pos1.market_value = 1000.0
 
         positions_dict = {'AAPL': pos1}
-        result = TradingBot._calculate_total_close_value(
+        result = calculate_total_close_value(
             ['AAPL', 'MSFT'],  # MSFT doesn't exist
             positions_dict
         )
         # Only AAPL is 1000
         assert result == 1000.0
-
 
