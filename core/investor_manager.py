@@ -343,35 +343,192 @@ class InvestorManager:
         return results
 
     def _calculate_account_balance(self, investor: str, account: str) -> float:
-        """Рассчитать текущий баланс счета."""
+        """Рассчитать текущий баланс счета (только cash из operations.csv и trades).
+
+        Логика:
+        - Начальный баланс = SUM(deposits) - SUM(withdrawals) - SUM(fees) (из operations.csv)
+        - Потом учитываем trades: для каждой BUY уменьшаем cash, для каждой SELL увеличиваем
+        - Итого: balance = deposits - withdrawals - fees - (spent_on_buys) + (received_from_sells)
+        """
         investor_path = self._get_investor_path(investor)
         operations_file = investor_path / 'operations.csv'
+        trades_file = investor_path / 'trades.csv'
 
         balance = 0.0
 
-        if not operations_file.exists():
-            return balance
+        # 1. Получить balance из operations.csv
+        if operations_file.exists():
+            try:
+                with open(operations_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row['account'] == account and row['status'] == 'completed':
+                            amount = float(row['amount'])
+                            if row['operation'] == 'deposit':
+                                balance += amount
+                            elif row['operation'] == 'withdraw':
+                                balance -= amount
+                            elif row['operation'] == 'fee':
+                                balance -= amount
+
+            except Exception as exc:
+                logging.error(
+                    "Error reading operations for %s:%s - %s",
+                    investor, account, exc
+                )
+
+        # 2. Учитать trades (BUY уменьшает cash, SELL увеличивает)
+        if trades_file.exists():
+            try:
+                with open(trades_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row['account'] == account:
+                            action = row['action']
+                            amount = float(row['amount'])
+
+                            if action == 'BUY':
+                                # BUY уменьшает доступный cash
+                                balance -= amount
+                            elif action == 'SELL':
+                                # SELL увеличивает cash
+                                balance += amount
+
+            except Exception as exc:
+                logging.error(
+                    "Error reading trades for %s:%s - %s",
+                    investor, account, exc
+                )
+
+        return balance
+
+    def _get_investor_positions(self, investor: str, account: str) -> Dict[str, float]:
+        """Получить текущие позиции инвестора (количество акций по тикерам).
+
+        Returns:
+            Dict: {ticker: current_shares}
+        """
+        investor_path = self._get_investor_path(investor)
+        trades_file = investor_path / 'trades.csv'
+
+        positions = {}
+
+        if not trades_file.exists():
+            return positions
 
         try:
-            with open(operations_file, 'r', encoding='utf-8') as f:
+            with open(trades_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    if row['account'] == account and row['status'] == 'completed':
-                        amount = float(row['amount'])
-                        if row['operation'] == 'deposit':
-                            balance += amount
-                        elif row['operation'] == 'withdraw':
-                            balance -= amount
-                        elif row['operation'] == 'fee':
-                            balance -= amount
+                    if row['account'] == account:
+                        ticker = row['ticker']
+                        total_shares_after = float(row['total_shares_after'])
+                        # Последняя запись по тикеру - это текущее количество
+                        positions[ticker] = total_shares_after
 
         except Exception as exc:
             logging.error(
-                "Error calculating balance for %s:%s - %s",
+                "Error getting positions for %s:%s - %s",
                 investor, account, exc
             )
 
-        return balance
+        return positions
+
+    def _calculate_positions_value_and_pnl(
+        self,
+        investor: str,
+        account: str,
+        current_prices: Optional[Dict[str, float]] = None
+    ) -> Tuple[float, float, float]:
+        """Рассчитать стоимость позиций и P&L из trades.csv.
+
+        Args:
+            investor: Имя инвестора
+            account: Счет (low/medium/high)
+            current_prices: Dict[ticker] = current_price. Если None, используется последняя цена из trades.csv
+
+        Returns:
+            Tuple: (positions_value, realized_pnl, unrealized_pnl)
+        """
+        investor_path = self._get_investor_path(investor)
+        trades_file = investor_path / 'trades.csv'
+
+        positions_value = 0.0
+        realized_pnl = 0.0
+        unrealized_pnl = 0.0
+
+        if not trades_file.exists():
+            return 0.0, 0.0, 0.0
+
+        try:
+            # Получить текущие позиции
+            positions = self._get_investor_positions(investor, account)
+
+            # Для каждого тикера отслеживать cost basis
+            ticker_cost_basis = {}     # {ticker: {total_cost, total_shares, last_price}}
+
+            with open(trades_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['account'] == account:
+                        ticker = row['ticker']
+                        action = row['action']
+                        shares = float(row['shares'])
+                        price = float(row['price'])
+
+                        # Инициализировать если не существует
+                        if ticker not in ticker_cost_basis:
+                            ticker_cost_basis[ticker] = {
+                                'total_cost': 0.0,
+                                'total_shares': 0.0,
+                                'last_price': price
+                            }
+
+                        data = ticker_cost_basis[ticker]
+                        data['last_price'] = price
+
+                        if action == 'BUY':
+                            data['total_cost'] += shares * price
+                            data['total_shares'] += shares
+                        elif action == 'SELL':
+                            # Расчет realized PnL (FIFO метод)
+                            if data['total_shares'] > 0:
+                                avg_cost = data['total_cost'] / data['total_shares']
+                                sell_revenue = shares * price
+                                cost_of_sold = shares * avg_cost
+                                realized_pnl += sell_revenue - cost_of_sold
+
+                                # Обновить cost basis
+                                data['total_cost'] = max(0, data['total_cost'] - cost_of_sold)
+                                data['total_shares'] = max(0, data['total_shares'] - shares)
+
+            # Рассчитать positions_value и unrealized_pnl
+            for ticker, current_shares in positions.items():
+                if current_shares > 0 and ticker in ticker_cost_basis:
+                    data = ticker_cost_basis[ticker]
+
+                    # Использовать текущую цену или последнюю цену из trades
+                    if current_prices and ticker in current_prices:
+                        current_price = current_prices[ticker]
+                    else:
+                        current_price = data['last_price']
+
+                    # Стоимость позиции
+                    position_value = current_shares * current_price
+                    positions_value += position_value
+
+                    # Unrealized PnL
+                    if data['total_shares'] > 0:
+                        avg_cost = data['total_cost'] / data['total_shares']
+                        unrealized_pnl += (current_price - avg_cost) * current_shares
+
+        except Exception as exc:
+            logging.error(
+                "Error calculating positions for %s:%s - %s",
+                investor, account, exc
+            )
+
+        return positions_value, realized_pnl, unrealized_pnl
 
     # ==================== РАСЧЕТЫ ====================
 
@@ -506,9 +663,16 @@ class InvestorManager:
 
         # Рассчитать каждый счет
         for account in ['low', 'medium', 'high']:
-            account_balance = self._calculate_account_balance(name, account)
-            balance[account]['total_value'] = account_balance
-            balance['total_value'] += account_balance
+            cash = self._calculate_account_balance(name, account)
+            positions_value, realized_pnl, unrealized_pnl = self._calculate_positions_value_and_pnl(
+                name, account
+            )
+
+            balance[account]['cash'] = cash
+            balance[account]['positions_value'] = positions_value
+            balance[account]['pnl'] = realized_pnl + unrealized_pnl
+            balance[account]['total_value'] = cash + positions_value
+            balance['total_value'] += balance[account]['total_value']
 
         return balance
 
@@ -518,9 +682,17 @@ class InvestorManager:
 
         for investor_name in self.investors:
             balance = self.calculate_investor_balance(investor_name)
+
+            # Рассчитать общий P&L
+            total_pnl = (
+                balance.get('low', {}).get('pnl', 0.0) +
+                balance.get('medium', {}).get('pnl', 0.0) +
+                balance.get('high', {}).get('pnl', 0.0)
+            )
+
             balances[investor_name] = {
                 'total_value': balance['total_value'],
-                'pnl': 0.0,  # TODO: рассчитать PnL из trades.csv
+                'pnl': total_pnl,
                 'accounts': balance
             }
 
