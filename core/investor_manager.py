@@ -73,6 +73,38 @@ class InvestorManager:
         except Exception as exc:
             logging.error("Error loading registry: %s", exc)
 
+    def _save_registry(self) -> None:
+        """Сохранить текущее состояние реестра инвесторов."""
+        if not self.registry_path:
+            return
+
+        fieldnames = [
+            'name',
+            'creation_date',
+            'fee_percent',
+            'is_fee_receiver',
+            'high_watermark',
+            'last_fee_date',
+            'status'
+        ]
+
+        try:
+            with open(self.registry_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for investor in self.investors.values():
+                    writer.writerow({
+                        'name': investor.name,
+                        'creation_date': investor.creation_date.strftime('%Y-%m-%d'),
+                        'fee_percent': f"{investor.fee_percent:.4f}",
+                        'is_fee_receiver': str(investor.is_fee_receiver),
+                        'high_watermark': f"{investor.high_watermark:.2f}",
+                        'last_fee_date': investor.last_fee_date.strftime('%Y-%m-%d'),
+                        'status': investor.status
+                    })
+        except Exception as exc:
+            logging.error("Error saving registry: %s", exc)
+
     def _ensure_investor_directories(self) -> None:
         """Создать папки для всех инвесторов."""
         self.investors_dir.mkdir(parents=True, exist_ok=True)
@@ -262,11 +294,8 @@ class InvestorManager:
 
     # ==================== ОБРАБОТКА ОПЕРАЦИЙ ====================
 
-    def process_pending_operations(self, trading_client: TradingClient) -> Dict:
+    def process_pending_operations(self) -> Dict:
         """Обработать все pending операции при ребалансировке.
-
-        Args:
-            trading_client: Alpaca trading client
 
         Returns:
             Dict: Результаты обработки
@@ -279,7 +308,7 @@ class InvestorManager:
 
         for investor_name in self.investors:
             investor_results = self._process_investor_pending_ops(
-                investor_name, trading_client
+                investor_name
             )
             results['processed'] += investor_results['processed']
             results['completed'].extend(investor_results['completed'])
@@ -293,8 +322,7 @@ class InvestorManager:
 
         return results
 
-    def _process_investor_pending_ops(self, investor: str,
-                                      trading_client: TradingClient) -> Dict:
+    def _process_investor_pending_ops(self, investor: str) -> Dict:
         """Обработать pending операции для одного инвестора."""
         investor_path = self._get_investor_path(investor)
         operations_file = investor_path / 'operations.csv'
@@ -546,6 +574,7 @@ class InvestorManager:
         """
         fees = {}
         now = datetime.now(tz=self.ny_timezone)
+        registry_updated = False
 
         investors_to_check = (
             [for_investor] if for_investor else self.investors.keys()
@@ -595,9 +624,14 @@ class InvestorManager:
                     # Обновить дату последней комиссии только при ежемесячном расчете
                     if at_rebalance:
                         investor.last_fee_date = now
+                        registry_updated = True
 
                     # Обновить HWM в любом случае
                     investor.high_watermark = current_value
+                    registry_updated = True
+
+        if registry_updated:
+            self._save_registry()
 
         return fees
 

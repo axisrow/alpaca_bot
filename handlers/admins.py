@@ -46,50 +46,12 @@ def setup_admin_router(trading_bot):
             await loading_msg.delete()
             raise ValueError("No rebalance preview available")
 
-        msg = "📊 <b>Rebalance Preview (DRY RUN)</b>\n\n"
-
-        for strategy_name, preview in previews.items():
-            # Check for errors
-            if "error" in preview:
-                msg += f"<b>🔹 {strategy_name.upper()}:</b>\n"
-                msg += f"  ❌ Error: {preview['error']}\n\n"
-                continue
-
-            # Build response for this strategy
-            current_positions = preview.get("current_positions", {})
-            positions_dict = preview.get("positions_dict", {})
-            top_count = preview.get("top_count", 10)
-            top_tickers = preview.get("top_tickers", [])
-            positions_to_close = preview.get("positions_to_close", [])
-            positions_to_open = preview.get("positions_to_open", [])
-            available_cash = preview.get("available_cash", 0.0)
-            position_size = preview.get("position_size", 0.0)
-
-            msg += f"<b>🔹 {strategy_name.upper()}</b>\n\n"
-
-            # Summary statistics only (no detailed lists)
-            msg += f"📍 Current Positions: {len(current_positions)}\n"
-            msg += f"📉 Positions to Close: {len(positions_to_close)}\n"
-            msg += f"📈 Positions to Open: {len(positions_to_open)}\n"
-
-            # Calculate total value to close
-            total_close_value = 0.0
-            for symbol in positions_to_close:
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    total_close_value += market_value
-
-            # Calculate total value to open
-            total_open_value = len(positions_to_open) * position_size if positions_to_open else 0.0
-
-            msg += "\n<b>💰 Summary:</b>\n"
-            msg += f"  Available cash: ${available_cash:.2f}\n"
-            msg += f"  Positions to close: {len(positions_to_close)} (${total_close_value:.2f}) | "
-            msg += f"Positions to open: {len(positions_to_open)} (${total_open_value:.2f})\n"
-            msg += "\n" + "─" * 40 + "\n\n"
-
-        msg += "⚠️ <i>This is a DRY RUN - no trades executed</i>"
+        summary = trading_bot.build_rebalance_summary(previews)
+        msg = (
+            "📊 <b>Rebalance Preview (DRY RUN)</b>\n\n"
+            f"{summary}\n\n"
+            "⚠️ <i>This is a DRY RUN - no trades executed</i>"
+        )
 
         await loading_msg.delete()
         await message.answer(msg, parse_mode="HTML")

@@ -9,7 +9,7 @@ from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
 from core.data_loader import load_market_data
-from core.utils import retry_on_exception, get_positions
+from core.utils import retry_on_exception
 
 
 class BaseMomentumStrategy:
@@ -148,9 +148,16 @@ class BaseMomentumStrategy:
             # Get trading strategy signals
             top_tickers = self.get_signals()
             logging.info("Top %d stocks by momentum: %s", self.top_count, ', '.join(top_tickers))
+            if not top_tickers:
+                logging.warning("No tickers returned for strategy, skipping rebalance")
+                return
 
             # Get current positions
-            current_positions = get_positions(self.trading_client)
+            positions_raw = self.trading_client.get_all_positions()
+            current_positions = {
+                pos.symbol: float(pos.qty)
+                for pos in positions_raw
+            }
             logging.info("Current positions: %s", current_positions)
 
             # Determine positions to close and open
@@ -168,24 +175,54 @@ class BaseMomentumStrategy:
                 self.close_positions(positions_to_close)
                 time.sleep(5)
 
-            # Open new positions
-            if positions_to_open:
-                account = self.trading_client.get_account()  # type: ignore[no-untyped-call]
-                cash_value = getattr(account, 'cash', 0.0)  # type: ignore[attr-defined]
-                available_cash = float(cast(float, cash_value))  # type: ignore[arg-type]
-                if available_cash <= 0:
-                    logging.warning("Insufficient funds: $%.2f", available_cash)
-                    return
+            # Refresh current positions after closing
+            refreshed_positions = {
+                pos.symbol: pos
+                for pos in self.trading_client.get_all_positions()
+            }
 
-                position_size = available_cash / len(positions_to_open)
-                if position_size < 1:
-                    logging.warning(
-                        "Position size too small: $%.2f",
-                        position_size
-                    )
-                    return
+            account = self.trading_client.get_account()  # type: ignore[no-untyped-call]
+            portfolio_value = float(
+                getattr(
+                    account,
+                    'portfolio_value',
+                    getattr(account, 'equity', 0.0)
+                )
+            )
+            if portfolio_value <= 0:
+                logging.warning("Portfolio value not available for rebalancing")
+                return
 
-                self.open_positions(positions_to_open, position_size)
+            target_value = portfolio_value / len(top_tickers)
+            if target_value <= 0:
+                logging.warning("Target value per ticker is non-positive")
+                return
+
+            tolerance = 1.0  # Skip tiny adjustments
+            for ticker in top_tickers:
+                position = refreshed_positions.get(ticker)
+                current_value = float(getattr(position, 'market_value', 0)) if position else 0.0
+                difference = target_value - current_value
+
+                if abs(difference) <= tolerance:
+                    continue
+
+                side = OrderSide.BUY if difference > 0 else OrderSide.SELL
+                order = MarketOrderRequest(
+                    symbol=ticker,
+                    notional=round(abs(difference), 2),
+                    side=side,
+                    type=OrderType.MARKET,
+                    time_in_force=TimeInForce.DAY
+                )
+                self.trading_client.submit_order(order)
+                logging.info(
+                    "Adjusted %s by %s for $%.2f (target $%.2f)",
+                    ticker,
+                    side.name,
+                    abs(difference),
+                    target_value
+                )
 
             logging.info("Portfolio rebalancing completed successfully")
 

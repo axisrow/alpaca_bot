@@ -34,7 +34,7 @@ class TelegramLoggingHandler(logging.Handler):
 
         try:
             log_message = self.format(record)
-            message = f"🚨 <b>Error</b>\\n\\n<code>{log_message}</code>"
+            message = f"🚨 <b>Error</b>\n\n<code>{log_message}</code>"
 
             # Schedule sending on main event loop
             future = asyncio.run_coroutine_threadsafe(

@@ -150,9 +150,7 @@ class LiveStrategy:
             # 1. Обработать pending операции
             if self.investor_manager:
                 logging.info("Processing pending investor operations")
-                pending_results = self.investor_manager.process_pending_operations(
-                    self.trading_client
-                )
+                pending_results = self.investor_manager.process_pending_operations()
                 logging.info(
                     "Processed %d pending operations",
                     pending_results.get('processed', 0)
@@ -332,8 +330,13 @@ class LiveStrategy:
     def _close_account_positions(self, account_name: str,
                                 positions: List[str]) -> None:
         """Закрыть позиции счета."""
+        snapshot = {
+            pos.symbol: float(pos.qty)
+            for pos in self.trading_client.get_all_positions()
+        }
         for ticker in positions:
             try:
+                total_shares = snapshot.get(ticker, 0.0)
                 self.trading_client.close_position(ticker)
                 logging.info(
                     "Closed %s position from %s account",
@@ -353,14 +356,6 @@ class LiveStrategy:
                         price = float(bars[ticker][-1].close) if bars and ticker in bars else 0.0  # type: ignore
                     except Exception:  # pylint: disable=broad-exception-caught
                         price = 0.0
-
-                    # Получить общее количество акций для счета
-                    positions = self.trading_client.get_all_positions()  # type: ignore
-                    total_shares = 0.0
-                    for pos in positions:
-                        if pos.symbol == ticker:  # type: ignore
-                            total_shares = float(pos.qty)  # type: ignore
-                            break
 
                     if total_shares > 0:
                         self.investor_manager.distribute_trade_to_investors(

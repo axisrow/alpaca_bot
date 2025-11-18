@@ -213,6 +213,7 @@ class TradingBot:
         """Execute portfolio rebalancing for all strategies."""
         try:
             logging.info("Performing portfolio rebalancing for all strategies...")
+            errors: list[str] = []
 
             for strategy_name, strategy_data in self.iter_enabled_strategies():
                 try:
@@ -226,6 +227,13 @@ class TradingBot:
                         exc,
                         exc_info=True
                     )
+                    errors.append(f"{strategy_name}: {exc}")
+
+            if errors:
+                raise RuntimeError(
+                    "One or more strategies failed to rebalance "
+                    f"({'; '.join(errors)})"
+                )
 
             self.rebalance_flag.write_flag()
             logging.info("All strategies rebalanced successfully")
@@ -246,7 +254,11 @@ class TradingBot:
             return
 
         try:
-            run_sync(self.telegram_bot.send_rebalance_request(), timeout=30)
+            run_sync(
+                self.telegram_bot.send_rebalance_request(),
+                loop=getattr(self.telegram_bot, 'loop', None),
+                timeout=30
+            )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error requesting rebalance confirmation: %s", exc)
             # Fallback: execute rebalance anyway
@@ -511,22 +523,37 @@ class TradingBot:
                 # Get account
                 account = client.get_account()
                 available_cash = float(getattr(account, 'cash', 0))
+                portfolio_value = float(
+                    getattr(
+                        account,
+                        'portfolio_value',
+                        getattr(account, 'equity', 0.0)
+                    )
+                )
 
                 # Get top N by momentum
                 top_tickers = strategy.get_signals()
 
                 # Calculate what would change
-                positions_to_close = list(set(current_positions.keys()) - set(top_tickers))
-                positions_to_open = list(set(top_tickers) - set(current_positions.keys()))
+                top_set = set(top_tickers)
+                positions_to_close = list(set(current_positions.keys()) - top_set)
+                positions_to_open = list(top_set - set(current_positions.keys()))
 
-                # Calculate position size
-                position_size = 0.0
-                if positions_to_open:
-                    # Calculate total cash that will be available after closing positions
-                    total_close_value = self._calculate_total_close_value(positions_to_close, positions_dict)
-                    total_cash_after_close = available_cash + total_close_value
-                    if total_cash_after_close > 0:
-                        position_size = total_cash_after_close / len(positions_to_open)
+                # Target equal-weight value per ticker
+                target_position_value = (
+                    portfolio_value / len(top_tickers)
+                    if top_tickers else 0.0
+                )
+                rebalance_plan: Dict[str, Dict[str, float]] = {}
+                if target_position_value > 0:
+                    for ticker in top_tickers:
+                        pos_info = positions_dict.get(ticker)
+                        current_value = float(getattr(pos_info, 'market_value', 0)) if pos_info else 0.0
+                        rebalance_plan[ticker] = {
+                            "current_value": current_value,
+                            "target_value": target_position_value,
+                            "difference": target_position_value - current_value
+                        }
 
                 previews[strategy_name] = {
                     "current_positions": current_positions,
@@ -536,7 +563,9 @@ class TradingBot:
                     "positions_to_close": positions_to_close,
                     "positions_to_open": positions_to_open,
                     "available_cash": available_cash,
-                    "position_size": position_size
+                    "portfolio_value": portfolio_value,
+                    "target_position_value": target_position_value,
+                    "rebalance_plan": rebalance_plan
                 }
 
             except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -550,7 +579,58 @@ class TradingBot:
                     "positions_to_close": [],
                     "positions_to_open": [],
                     "available_cash": 0.0,
-                    "position_size": 0.0
+                    "portfolio_value": 0.0,
+                    "target_position_value": 0.0,
+                    "rebalance_plan": {}
                 }
 
         return previews
+
+    def build_rebalance_summary(self, previews: Dict[str, Dict[str, Any]]) -> str:
+        """Build formatted summary for rebalance previews."""
+        sections: list[str] = []
+        for strategy_name, preview in previews.items():
+            section = [f"<b>🔹 {strategy_name.upper()}</b>"]
+
+            if "error" in preview:
+                section.append(f"  ❌ Error: {preview['error']}")
+                sections.append("\n".join(section))
+                continue
+
+            positions_dict = preview.get("positions_dict", {})
+            positions_to_close = preview.get("positions_to_close", [])
+            positions_to_open = preview.get("positions_to_open", [])
+            available_cash = float(preview.get("available_cash", 0.0))
+            portfolio_value = float(preview.get("portfolio_value", 0.0))
+            target_value = float(preview.get("target_position_value", 0.0))
+            top_tickers = preview.get("top_tickers", [])
+            rebalance_plan = preview.get("rebalance_plan", {})
+
+            total_close_value = self._calculate_total_close_value(positions_to_close, positions_dict)
+            open_value = len(top_tickers) * target_value if target_value else 0.0
+            section.append(f"  📊 Basket size: {len(top_tickers)} tickers")
+            section.append(f"  💼 Portfolio: ${portfolio_value:.2f}")
+            section.append(f"  💰 Cash: ${available_cash:.2f}")
+            if target_value:
+                section.append(f"  🎯 Target per ticker: ${target_value:.2f}")
+            section.append(
+                f"  📉 Close: {len(positions_to_close)} (${total_close_value:.2f})"
+            )
+            section.append(
+                f"  📈 Open: {len(positions_to_open)} (target spend ${open_value:.2f})"
+            )
+
+            if isinstance(rebalance_plan, dict) and rebalance_plan:
+                increase = sum(
+                    1 for data in rebalance_plan.values()
+                    if isinstance(data, dict) and data.get("difference", 0) > 1
+                )
+                decrease = sum(
+                    1 for data in rebalance_plan.values()
+                    if isinstance(data, dict) and data.get("difference", 0) < -1
+                )
+                section.append(f"  🔧 Adjustments: {increase} buy / {decrease} sell")
+
+            sections.append("\n".join(section))
+
+        return "\n\n".join(sections)

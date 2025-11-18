@@ -1,4 +1,5 @@
 """Telegram bot class for managing Telegram interactions."""
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, cast
@@ -22,6 +23,7 @@ class TelegramBot:
             trading_bot: Trading bot instance
         """
         assert TELEGRAM_BOT_TOKEN is not None, "TELEGRAM_BOT_TOKEN must be set"
+        self.loop = asyncio.get_running_loop()
 
         # Create session with increased timeout for production stability
         session = AiohttpSession(timeout=60)  # 60 second timeout for all requests
@@ -121,7 +123,7 @@ class TelegramBot:
     def send_daily_countdown_sync(self) -> None:
         """Sync wrapper for sending countdown (for scheduler)."""
         try:
-            run_sync(self.send_daily_countdown(), timeout=30)
+            run_sync(self.send_daily_countdown(), loop=self.loop, timeout=30)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error sending countdown: %s", exc)
 
@@ -160,6 +162,7 @@ class TelegramBot:
         try:
             run_sync(
                 self.send_error_notification(error_title, error_msg, is_warning),
+                loop=self.loop,
                 timeout=30
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -171,9 +174,6 @@ class TelegramBot:
             logging.info("Admin list is empty, sending rebalance request to no one")
             return
 
-        # Set flag indicating we're waiting for confirmation
-        self.trading_bot.awaiting_rebalance_confirmation = True
-
         # Get rebalance preview for all strategies
         previews = self.trading_bot.get_rebalance_preview()
 
@@ -182,75 +182,26 @@ class TelegramBot:
             logging.error("No strategy previews available")
             return
 
-        # Get first strategy preview
-        preview = next(iter(previews.values()))
-
-        # Check for errors in preview
-        if "error" in preview:
-            logging.error("Rebalance preview error: %s", preview['error'])
+        summary = self.trading_bot.build_rebalance_summary(previews)
+        if not summary.strip():
+            logging.error("Rebalance preview summary is empty")
             return
 
-        # Build response message
-        current_positions = cast(Dict[str, float], preview.get("current_positions", {}))
-        positions_dict = cast(Dict[str, Any], preview.get("positions_dict", {}))
-        top_tickers = cast(list, preview.get("top_tickers", []))
-        positions_to_close = cast(list, preview.get("positions_to_close", []))
-        positions_to_open = cast(list, preview.get("positions_to_open", []))
-        available_cash = float(cast(float, preview.get("available_cash", 0.0)))
-        position_size = float(cast(float, preview.get("position_size", 0.0)))
+        msg = (
+            "🔄 <b>Rebalance Request - Confirmation Needed</b>\n\n"
+            f"{summary}\n"
+            "<b>👉 Reply with:</b>\n"
+            "  <code>да</code> or <code>yes</code> - Approve rebalance\n"
+            "  <code>нет</code> or <code>no</code> - Reject rebalance"
+        )
 
-        msg = "🔄 <b>Rebalance Request - Need Confirmation</b>\n\n"
-
-        # Current positions
-        msg += "<b>📍 Current Positions:</b>\n"
-        if current_positions:
-            for symbol, qty in current_positions.items():
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    msg += f"  {symbol}: {float(qty):.2f} shares (${market_value:.2f})\n"
-                else:
-                    msg += f"  {symbol}: {float(qty):.2f} shares\n"
-        else:
-            msg += "  No open positions\n"
-
-        msg += "\n<b>🎯 Top 10 by Momentum:</b>\n"
-        for i, ticker in enumerate(top_tickers, 1):
-            msg += f"  {i}. {ticker}\n"
-
-        msg += "\n<b>📉 Positions to Close:</b>\n"
-        if positions_to_close:
-            for symbol in positions_to_close:
-                pos_info = positions_dict.get(symbol)
-                if pos_info:
-                    market_value = float(getattr(pos_info, 'market_value', 0))
-                    msg += f"  ❌ {symbol} (${market_value:.2f})\n"
-                else:
-                    msg += f"  ❌ {symbol}\n"
-        else:
-            msg += "  None\n"
-
-        msg += "\n<b>📈 Positions to Open:</b>\n"
-        if positions_to_open:
-            for symbol in positions_to_open:
-                msg += f"  ✅ {symbol}\n"
-        else:
-            msg += "  None\n"
-
-        # Calculate total value to open
-        total_open_value = len(positions_to_open) * position_size if positions_to_open else 0.0
-
-        msg += "\n<b>💰 Summary:</b>\n"
-        msg += f"  Available cash: ${available_cash:.2f}\n"
-        total_close_value = self.trading_bot._calculate_total_close_value(positions_to_close, positions_dict)
-        msg += f"  Positions to close: {len(positions_to_close)} (${total_close_value:.2f}) | "
-        msg += f"Positions to open: {len(positions_to_open)} (${total_open_value:.2f})\n"
-
-        msg += "\n<b>👉 Reply with:</b>\n"
-        msg += "  <code>да</code> or <code>yes</code> - Approve rebalance\n"
-        msg += "  <code>нет</code> or <code>no</code> - Reject rebalance"
-
-        await self._send_to_admins(msg)
+        # Set flag indicating we're waiting for confirmation
+        self.trading_bot.awaiting_rebalance_confirmation = True
+        try:
+            await self._send_to_admins(msg)
+        except Exception:
+            self.trading_bot.awaiting_rebalance_confirmation = False
+            raise
 
     async def start(self) -> None:
         """Start Telegram bot."""

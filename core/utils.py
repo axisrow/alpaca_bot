@@ -64,12 +64,18 @@ def get_positions(trading_client) -> Dict[str, float]:
     return {pos.symbol: float(pos.qty) for pos in positions}
 
 
-def run_sync(coro: Coroutine[Any, Any, T], timeout: float | None = 30) -> T:
-    """Execute coroutine from sync context using current or new loop."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
+def run_sync(
+    coro: Coroutine[Any, Any, T],
+    *,
+    loop: asyncio.AbstractEventLoop | None = None,
+    timeout: float | None = 30
+) -> T:
+    """Execute coroutine from sync context using provided or current loop."""
+    if loop is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
 
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result(timeout=timeout)

@@ -78,68 +78,75 @@ def _download_with_retry(tickers: List[str]) -> pd.DataFrame:
     last_exception: Exception | None = None
 
     max_attempts = MARKET_DATA_MAX_RETRIES if MARKET_DATA_ENABLE_RETRY else 1
-    for attempt in range(1, max_attempts + 1):
-        try:
-            logger.info(
-                "Downloading market data (attempt %d/%d, tickers=%d)",
-                attempt,
-                max_attempts,
-                len(remaining),
-            )
-            data = yf.download(
-                tickers=remaining,
-                period=MARKET_DATA_PERIOD,
-                auto_adjust=True,
-                progress=ENVIRONMENT == "local",
-            )
-
-            if data is None or data.empty:
-                raise ValueError("No data downloaded from yfinance")
-
-            combined_data = data if combined_data is None else pd.concat([combined_data, data], axis=1)
-            missing = _find_missing_tickers(remaining, data)
-
-            if missing and attempt < max_attempts:
-                preview = missing[:10]
-                logger.warning(
-                    "Attempt %d/%d: %d tickers timed out (%s). Retrying remaining in %ds...",
+    yf_logger = logging.getLogger("yfinance")
+    original_disabled = getattr(yf_logger, 'disabled', False)
+    try:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                yf_logger.disabled = attempt < max_attempts
+                logger.info(
+                    "Downloading market data (attempt %d/%d, tickers=%d)",
                     attempt,
                     max_attempts,
-                    len(missing),
-                    preview,
-                    MARKET_DATA_RETRY_DELAY_SECONDS,
+                    len(remaining),
                 )
-                remaining = missing
-                time.sleep(MARKET_DATA_RETRY_DELAY_SECONDS)
-                continue
-
-            if missing:
-                logger.error(
-                    "Failed to download %d tickers after %d attempts: %s",
-                    len(missing),
-                    max_attempts,
-                    missing[:20] if len(missing) > 20 else missing,
+                data = yf.download(
+                    tickers=remaining,
+                    period=MARKET_DATA_PERIOD,
+                    threads=True,
+                    auto_adjust=True,
+                    progress=ENVIRONMENT == "local",
                 )
 
-            return combined_data
+                if data is None or data.empty:
+                    raise ValueError("No data downloaded from yfinance")
 
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            last_exception = exc
-            if attempt < max_attempts:
-                logger.warning(
-                    "Attempt %d failed: %s. Retrying in %ds...",
-                    attempt,
-                    exc,
-                    MARKET_DATA_RETRY_DELAY_SECONDS,
-                )
-                time.sleep(MARKET_DATA_RETRY_DELAY_SECONDS)
-            else:
-                logger.error(
-                    "Failed to download market data after %d attempts: %s",
-                    max_attempts,
-                    exc,
-                    exc_info=True,
-                )
+                combined_data = data if combined_data is None else pd.concat([combined_data, data], axis=1)
+                missing = _find_missing_tickers(remaining, data)
+
+                if missing and attempt < max_attempts:
+                    preview = missing[:10]
+                    logger.warning(
+                        "Attempt %d/%d: %d tickers timed out (%s). Retrying remaining in %ds...",
+                        attempt,
+                        max_attempts,
+                        len(missing),
+                        preview,
+                        MARKET_DATA_RETRY_DELAY_SECONDS,
+                    )
+                    remaining = missing
+                    time.sleep(MARKET_DATA_RETRY_DELAY_SECONDS)
+                    continue
+
+                if missing:
+                    logger.error(
+                        "Failed to download %d tickers after %d attempts: %s",
+                        len(missing),
+                        max_attempts,
+                        missing[:20] if len(missing) > 20 else missing,
+                    )
+
+                return combined_data
+
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                last_exception = exc
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Attempt %d failed: %s. Retrying in %ds...",
+                        attempt,
+                        exc,
+                        MARKET_DATA_RETRY_DELAY_SECONDS,
+                    )
+                    time.sleep(MARKET_DATA_RETRY_DELAY_SECONDS)
+                else:
+                    logger.error(
+                        "Failed to download market data after %d attempts: %s",
+                        max_attempts,
+                        exc,
+                        exc_info=True,
+                    )
+    finally:
+        yf_logger.disabled = original_disabled
 
     raise last_exception if last_exception else RuntimeError("Market data download failed without exception")
 
