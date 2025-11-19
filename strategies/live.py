@@ -404,8 +404,24 @@ class LiveStrategy:
                                     shares = float(order_status.filled_qty or 1)  # type: ignore
                                     break
                                 time.sleep(0.5)
-                        except Exception:  # pylint: disable=broad-exception-caught
-                            pass
+                            else:
+                                # Fallback: если не дождались исполнения, берем текущую рыночную цену
+                                logging.warning(
+                                    "Order %s not filled after wait, using market price for records",
+                                    order_response.id
+                                )
+                                from alpaca.data.requests import StockLatestTradeRequest
+                                request = StockLatestTradeRequest(symbol_or_symbols=ticker)
+                                trade = self.data_client.get_stock_latest_trade(request)
+                                if ticker in trade:
+                                    price = float(trade[ticker].price)
+                                    shares = cash_per_position / price
+                                else:
+                                    logging.error("Could not get market price for %s, skipping trade record", ticker)
+                                    shares = 0.0
+                        except Exception as exc:  # pylint: disable=broad-exception-caught
+                            logging.error("Error getting trade info for %s: %s", ticker, exc)
+                            shares = 0.0
 
                     if shares > 0:
                         self.investor_manager.distribute_trade_to_investors(

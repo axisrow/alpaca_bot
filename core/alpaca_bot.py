@@ -14,10 +14,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
 from config import (ENVIRONMENT, SNP500_TICKERS, CUSTOM_TICKERS)
-from strategies.paper_low import PaperLowStrategy
-from strategies.paper_medium import PaperMediumStrategy
-from strategies.paper_high import PaperHighStrategy
-from strategies.live import LiveStrategy
 from .data_loader import get_snp500_tickers, load_market_data
 from .investor_manager import InvestorManager
 from .rebalance_flag import RebalanceFlag, NY_TIMEZONE
@@ -63,6 +59,11 @@ class TradingBot:
 
     def _build_strategy_configs(self) -> Tuple[StrategyConfig, ...]:
         """Return immutable strategy configuration list."""
+        from strategies.paper_low import PaperLowStrategy
+        from strategies.paper_medium import PaperMediumStrategy
+        from strategies.paper_high import PaperHighStrategy
+        from strategies.live import LiveStrategy
+
         return (
             StrategyConfig("paper_low", PaperLowStrategy),
             StrategyConfig("paper_medium", PaperMediumStrategy),

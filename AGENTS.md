@@ -1,10 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`bot.py` is the entry point and wires Telegram handlers, schedulers, and strategy classes. Supporting modules (`handlers.py`, `investor_manager.py`, `data_loader.py`, `utils.py`) live at the repo root and should remain focused and reusable. Strategies reside in `strategies/` (paper tiers plus `live.py`), persistent assets and logs live in `data/`, and automated tests live in `tests/` with parity naming (`test_handlers.py`, `test_strategy.py`) plus the top-level `test_rebalance_paper_low.py`.
+`bot.py` is the entry point and wires Telegram handlers, schedulers, and strategy classes. Supporting modules (`handlers/`, `core/investor_manager.py`, `core/data_loader.py`, `core/utils.py`) are organized in subdirectories. Strategies reside in `strategies/` (paper tiers plus `live.py`), persistent assets and logs live in `data/`, and automated tests live in `tests/`.
 
 ## Build, Test & Development Commands
-Use `python -m venv .venv && source .venv/bin/activate` to create the environment, then `python -m pip install -r requirements.txt` to pull dependencies. Run the bot locally with `python bot.py` once a `.env` file supplies the required keys. Execute `python -m pytest` for the full suite or `python -m pytest -m "not integration"` for the fast path; add `-k <pattern>` for targeted debugging.
+Use `python3 -m venv .venv && source .venv/bin/activate` to create the environment, then `python3 -m pip install -r requirements.txt` to pull dependencies. Run the bot locally with `python3 bot.py` once a `.env` file supplies the required keys. Execute `python3 -m pytest` for the full suite.
 
 ## Coding Style & Naming Conventions
 Follow PEP 8 with 4-space indentation, type hints, and concise docstrings as shown in `bot.py` and `strategies/paper_low.py`. Keep strategy classes mostly stateless, inject Alpaca clients, and expose consistent method names (`get_signals`, `rebalance`) so they can be hot-swapped. Favor descriptive snake_case for functions and constants (`REBALANCE_INTERVAL_DAYS`) and always log via the configured `logging` handlers instead of printing.

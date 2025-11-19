@@ -217,4 +217,4 @@ class TelegramBot:
             BotCommand(command="test_rebalance", description="🧪 Test rebalance (admin only)"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
-        await self.dp.start_polling(self.bot, allowed_updates=None, polling_timeout=60)
+        await self.dp.start_polling(self.bot, allowed_updates=["message"], polling_timeout=60)
