@@ -449,4 +449,33 @@ def setup_admin_router(trading_bot):
 
         await message.answer(msg, parse_mode="HTML")
 
+    @router.message(Command("force_rebalance"))
+    @telegram_handler("❌ Error executing forced rebalance")
+    async def cmd_force_rebalance(message: Message):
+        """Handle /force_rebalance command - force portfolio rebalancing."""
+        # Admin only
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Admin only")
+            return
+
+        # Show preview
+        loading_msg = await message.answer("⏳ Calculating rebalance preview...")
+        previews = await asyncio.to_thread(trading_bot.get_rebalance_preview)
+
+        if not previews:
+            await loading_msg.delete()
+            raise ValueError("No rebalance preview available")
+
+        summary = trading_bot.build_rebalance_summary(previews)
+        await loading_msg.edit_text(
+            f"📊 <b>Forced Rebalance Preview</b>\n\n"
+            f"{summary}\n\n"
+            "⚠️ <i>Executing forced rebalance (ignoring all checks)...</i>",
+            parse_mode="HTML"
+        )
+
+        # Execute rebalance
+        await asyncio.to_thread(trading_bot.execute_rebalance)
+        await message.answer("✅ Forced rebalance completed successfully")
+
     return router
