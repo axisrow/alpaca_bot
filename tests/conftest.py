@@ -1,7 +1,21 @@
 """Pytest configuration and fixtures."""
+import subprocess
 import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+
+def pytest_sessionstart(session):
+    """
+    Called before the test session starts.
+    Kills any running instance of the bot to ensure a clean environment.
+    """
+    try:
+        # Kill any process matching "bot.py" (more robust than "python bot.py")
+        subprocess.run(["pkill", "-f", "bot.py"], check=False)
+        print("\n[INFO] Killed running bot instances (if any).")
+    except Exception as e:
+        print(f"\n[WARNING] Failed to kill bot instances: {e}")
 
 
 @pytest.fixture

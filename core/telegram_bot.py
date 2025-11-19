@@ -26,7 +26,7 @@ class TelegramBot:
         self.loop = asyncio.get_running_loop()
 
         # Create session with increased timeout for production stability
-        session = AiohttpSession(timeout=60)  # 60 second timeout for all requests
+        session = AiohttpSession(timeout=120)  # 120 second timeout for all requests
 
         self.bot = Bot(token=TELEGRAM_BOT_TOKEN, session=session)
         self.dp = Dispatcher()
@@ -217,4 +217,4 @@ class TelegramBot:
             BotCommand(command="test_rebalance", description="🧪 Test rebalance (admin only)"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
-        await self.dp.start_polling(self.bot, allowed_updates=None)
+        await self.dp.start_polling(self.bot, allowed_updates=None, polling_timeout=60)
