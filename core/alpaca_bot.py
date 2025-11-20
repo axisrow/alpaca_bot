@@ -322,6 +322,14 @@ class TradingBot:
                     id='daily_investor_snapshots'
                 )
                 logging.info("Daily investor snapshot job scheduled")
+                # Hourly balance integrity check with admin alert
+                self.scheduler.add_job(
+                    self.check_balance_integrity_job,
+                    'interval',
+                    hours=1,
+                    id='balance_integrity_watchdog'
+                )
+                logging.info("Balance integrity watchdog scheduled (hourly)")
         else:
             logging.info("Scheduler already running")
         if is_open:
@@ -343,6 +351,30 @@ class TradingBot:
                 logging.info("Daily investor snapshots saved")
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error saving investor snapshots: %s", exc)
+
+    def check_balance_integrity_job(self) -> None:
+        """Verify balance integrity and alert admins hourly if mismatch."""
+        try:
+            if not self.investor_manager:
+                return
+            live_strategy = self.strategies.get('live')
+            if not live_strategy:
+                logging.warning("Balance watchdog skipped: live strategy not available")
+                return
+            trading_client = live_strategy['client']
+            is_valid, msg = self.investor_manager.verify_balance_integrity(trading_client)
+            if not is_valid:
+                logging.error("Balance integrity watchdog detected mismatch: %s", msg)
+                if self.telegram_bot:
+                    self.telegram_bot.send_error_notification_sync(
+                        "Balance integrity mismatch",
+                        msg,
+                        is_warning=False
+                    )
+            else:
+                logging.info("Balance integrity watchdog OK: %s", msg)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Balance integrity watchdog failed: %s", exc, exc_info=True)
 
     def get_portfolio_status(self) -> Tuple[Dict[str, Dict[str, Any]], float, float]:
         """Get detailed portfolio data from all strategies.

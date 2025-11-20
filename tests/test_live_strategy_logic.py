@@ -69,3 +69,46 @@ def test_open_account_positions_fallback_logic(mock_trading_client, mock_investo
     
     assert shares_arg == 5.0, f"Fix verification failed: Shares should be 5.0 (1000/200), got {shares_arg}"
     assert price_arg == 200.0, f"Fix verification failed: Price should be 200.0, got {price_arg}"
+
+
+def test_rebalance_uses_broker_positions_only(monkeypatch):
+    """Strategy should rely on broker positions (not ledger) when deciding closes/opens."""
+
+    class FakePosition:
+        def __init__(self, symbol):
+            self.symbol = symbol
+            self.qty = 1
+
+    class FakeAccount:
+        def __init__(self, equity: float):
+            self.equity = equity
+
+    trading_client = MagicMock()
+    trading_client.get_all_positions.return_value = [FakePosition('OLD1'), FakePosition('OLD2')]
+    trading_client.get_account.return_value = FakeAccount(10000.0)
+
+    strategy = LiveStrategy(trading_client=trading_client, tickers=['OLD2', 'NEW1'])
+
+    closed = []
+    opened = []
+
+    # Guard: raising here would show we touched ledger-based positions
+    monkeypatch.setattr(LiveStrategy, "_get_investor_positions", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("ledger should not be used")))
+    monkeypatch.setattr(strategy, "_get_account_tickers", lambda account_name: ['OLD2', 'NEW1'])
+    monkeypatch.setattr(strategy, "_calculate_signals", lambda tickers: ['OLD2', 'NEW1'])
+    monkeypatch.setattr(strategy, "_close_account_positions", lambda account_name, positions: closed.append((account_name, sorted(positions))))
+    monkeypatch.setattr(strategy, "_open_account_positions", lambda account_name, tickers, size: opened.append((account_name, sorted(tickers))))
+
+    strategy.rebalance()
+
+    # Each account (low/medium/high) should try to close OLD1 (broker fact) and open NEW1
+    assert closed == [
+        ('low', ['OLD1']),
+        ('medium', ['OLD1']),
+        ('high', ['OLD1'])
+    ]
+    assert opened == [
+        ('low', ['NEW1']),
+        ('medium', ['NEW1']),
+        ('high', ['NEW1'])
+    ]

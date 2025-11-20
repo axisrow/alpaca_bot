@@ -44,6 +44,14 @@ class InvestorManager:
         self._load_registry()
         self._ensure_investor_directories()
 
+    def _active_investors(self) -> Dict[str, Investor]:
+        """Вернуть только активных инвесторов."""
+        return {
+            name: investor
+            for name, investor in self.investors.items()
+            if investor.status.lower() == 'active'
+        }
+
     def _load_registry(self) -> None:
         """Загрузить реестр инвесторов из CSV."""
         if not self.registry_path.exists():
@@ -306,7 +314,7 @@ class InvestorManager:
             'failed': []
         }
 
-        for investor_name in self.investors:
+        for investor_name in self._active_investors():
             investor_results = self._process_investor_pending_ops(
                 investor_name
             )
@@ -647,7 +655,8 @@ class InvestorManager:
             'high': defaultdict(float)
         }
 
-        for investor_name in self.investors:
+        active_investors = self._active_investors()
+        for investor_name in active_investors:
             balance = self.calculate_investor_balance(investor_name)
 
             for account in ['low', 'medium', 'high']:
@@ -670,9 +679,37 @@ class InvestorManager:
                 'low': {'total_value': X, ...},
                 'medium': {...},
                 'high': {...},
-                'total_value': X
-            }
+            'total_value': X
+        }
         """
+        investor = self.investors.get(name)
+        if not investor or investor.status.lower() != 'active':
+            logging.info(
+                "Skipping balance calculation for inactive investor %s",
+                name
+            )
+            return {
+                'low': {
+                    'cash': 0.0,
+                    'positions_value': 0.0,
+                    'total_value': 0.0,
+                    'pnl': 0.0
+                },
+                'medium': {
+                    'cash': 0.0,
+                    'positions_value': 0.0,
+                    'total_value': 0.0,
+                    'pnl': 0.0
+                },
+                'high': {
+                    'cash': 0.0,
+                    'positions_value': 0.0,
+                    'total_value': 0.0,
+                    'pnl': 0.0
+                },
+                'total_value': 0.0
+            }
+
         balance = {
             'low': {
                 'cash': 0.0,
@@ -714,7 +751,7 @@ class InvestorManager:
         """Получить балансы всех инвесторов."""
         balances = {}
 
-        for investor_name in self.investors:
+        for investor_name in self._active_investors():
             balance = self.calculate_investor_balance(investor_name)
 
             # Рассчитать общий P&L
@@ -759,7 +796,7 @@ class InvestorManager:
             return
 
         # Распределить по инвесторам пропорционально
-        for investor_name in self.investors:
+        for investor_name in self._active_investors():
             investor_capital = account_allocations.get(investor_name, 0.0)
 
             if investor_capital <= 0:
@@ -869,8 +906,14 @@ class InvestorManager:
         """
         try:
             # Рассчитать виртуальный баланс
+            active_investors = self._active_investors()
+            if not active_investors:
+                msg = "Balance check skipped: no active investors in registry"
+                logging.info(msg)
+                return True, msg
+
             virtual_total = 0.0
-            for investor_name in self.investors:
+            for investor_name in active_investors:
                 balance = self.calculate_investor_balance(investor_name)
                 virtual_total += balance['total_value']
 
@@ -883,8 +926,9 @@ class InvestorManager:
 
             if diff > 1.0:
                 msg = (
-                    f"Balance mismatch! Virtual: ${virtual_total:,.2f}, "
-                    f"Real: ${real_total:,.2f}, Diff: ${diff:,.2f}"
+                    "Виртуальный баланс инвесторов не сходится с балансом счета. "
+                    f"Virtual: ${virtual_total:,.2f}, Real equity: ${real_total:,.2f}, Diff: ${diff:,.2f}. "
+                    "Проверьте registry, pending операции и trades.csv. Работа остановлена."
                 )
                 logging.error(msg)
                 return False, msg
@@ -908,7 +952,7 @@ class InvestorManager:
         """
         date = date or datetime.now(NY_TIMEZONE)
 
-        for investor_name in self.investors:
+        for investor_name in self._active_investors():
             balance = self.calculate_investor_balance(investor_name)
             investor_path = self._get_investor_path(investor_name)
             snapshot_file = investor_path / 'balances_snapshot.csv'

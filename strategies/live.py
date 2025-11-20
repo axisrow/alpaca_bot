@@ -192,22 +192,19 @@ class LiveStrategy:
                     self.top_count, account_name, ', '.join(top_tickers[:5])
                 )
 
-                # Получить текущие позиции (из trades.csv инвесторов если есть)
-                if self.investor_manager:
-                    current_positions = self._get_investor_positions(account_name)
-                else:
-                    current_positions = get_positions(self.trading_client)
+                # Получить текущие позиции с брокера (единственный источник истины)
+                broker_positions = get_positions(self.trading_client)
+                current_positions_set = set(broker_positions)
 
                 # Определить какие позиции закрыть и открыть
                 top_tickers_set = set(top_tickers)
-                current_positions_set = set(current_positions)
-
                 positions_to_close = list(current_positions_set - top_tickers_set)
                 positions_to_open = list(top_tickers_set - current_positions_set)
 
                 logging.info(
-                    "Account %s: close %d, open %d positions",
-                    account_name, len(positions_to_close), len(positions_to_open)
+                    "Account %s: close %d, open %d positions (broker fact: %d)",
+                    account_name, len(positions_to_close), len(positions_to_open),
+                    len(current_positions_set)
                 )
 
                 # Закрыть ненужные позиции
@@ -229,7 +226,7 @@ class LiveStrategy:
                         account_name, positions_to_open, position_size
                     )
 
-            # 4. Проверить контрольные суммы
+            # 4. Проверить контрольные суммы (критично: при несоответствии падаем)
             if self.investor_manager:
                 is_valid, msg = self.investor_manager.verify_balance_integrity(
                     self.trading_client
