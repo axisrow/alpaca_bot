@@ -4,6 +4,7 @@ import time
 from typing import List, Tuple, cast
 
 import pandas as pd
+from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
@@ -44,6 +45,12 @@ class BaseMomentumStrategy:
         self.tickers = tickers
         self.top_count = top_count
 
+    @staticmethod
+    def _is_pdt_error(exc: Exception) -> bool:
+        """Detect Alpaca PDT protection error."""
+        msg = str(exc).lower()
+        return "pattern day trading" in msg or "40310100" in msg
+
     def _filter_tradable_tickers(self, tickers: List[str]) -> List[str]:
         """Отфильтровать тикеры, доступные к торговле (active + tradable)."""
         tradable: List[str] = []
@@ -52,8 +59,12 @@ class BaseMomentumStrategy:
         for ticker in tickers:
             try:
                 asset = self.trading_client.get_asset(ticker)
-                status = str(getattr(asset, 'status', '')).lower()
-                if getattr(asset, 'tradable', False) and status == 'active':
+                raw_status = getattr(asset, 'status', 'active')
+                status = raw_status.lower() if isinstance(raw_status, str) else 'active'
+                raw_tradable = getattr(asset, 'tradable', True)
+                tradable_flag = bool(raw_tradable)
+
+                if tradable_flag and status == 'active':
                     tradable.append(ticker)
                 else:
                     skipped.append((ticker, status or 'not_tradable'))
@@ -153,6 +164,21 @@ class BaseMomentumStrategy:
                     ticker,
                     cash_per_position
                 )
+            except APIError as exc:
+                if self._is_pdt_error(exc):
+                    logging.warning(
+                        "Order for %s blocked by PDT protection; skipping ticker",
+                        ticker
+                    )
+                    failed_opens.append((ticker, "PDT protection"))
+                    continue
+                logging.error(
+                    "Error opening position %s: %s",
+                    ticker,
+                    exc,
+                    exc_info=True
+                )
+                failed_opens.append((ticker, str(exc)))
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logging.error(
                     "Error opening position %s: %s",
@@ -233,6 +259,7 @@ class BaseMomentumStrategy:
                 return
 
             tolerance = 1.0  # Skip tiny adjustments
+            failed_adjustments = []
             for ticker in top_tickers:
                 position = refreshed_positions.get(ticker)
                 current_value = float(getattr(position, 'market_value', 0)) if position else 0.0
@@ -249,16 +276,40 @@ class BaseMomentumStrategy:
                     type=OrderType.MARKET,
                     time_in_force=TimeInForce.DAY
                 )
-                self.trading_client.submit_order(order)
-                logging.info(
-                    "Adjusted %s by %s for $%.2f (target $%.2f)",
-                    ticker,
-                    side.name,
-                    abs(difference),
-                    target_value
+                try:
+                    self.trading_client.submit_order(order)
+                    logging.info(
+                        "Adjusted %s by %s for $%.2f (target $%.2f)",
+                        ticker,
+                        side.name,
+                        abs(difference),
+                        target_value
+                    )
+                except APIError as exc:
+                    if self._is_pdt_error(exc):
+                        logging.warning(
+                            "Adjustment for %s blocked by PDT protection; skipping ticker",
+                            ticker
+                        )
+                        failed_adjustments.append((ticker, "PDT protection"))
+                        continue
+                    raise
+
+            if failed_adjustments:
+                logging.warning(
+                    "Skipped %d adjustment(s) due to PDT: %s",
+                    len(failed_adjustments),
+                    failed_adjustments
                 )
 
             logging.info("Portfolio rebalancing completed successfully")
 
+        except APIError as exc:
+            if self._is_pdt_error(exc):
+                # Если PDT все же всплыл вне точечной обработки
+                logging.warning("Rebalance encountered PDT protection: %s", exc)
+            else:
+                logging.error("Error during rebalancing: %s", exc, exc_info=True)
+                raise
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logging.error("Error during rebalancing: %s", exc, exc_info=True)

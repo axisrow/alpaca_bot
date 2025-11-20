@@ -4,6 +4,7 @@ import time
 from typing import List, Tuple, cast, TYPE_CHECKING, Optional
 
 import pandas as pd
+from alpaca.common.exceptions import APIError
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
@@ -46,6 +47,12 @@ class LiveStrategy:
         self.top_count = top_count
         self.investor_manager = investor_manager
 
+    @staticmethod
+    def _is_pdt_error(exc: Exception) -> bool:
+        """Detect Alpaca PDT protection error."""
+        msg = str(exc).lower()
+        return "pattern day trading" in msg or "40310100" in msg
+
     def _filter_tradable_tickers(self, tickers: List[str]) -> List[str]:
         """Отфильтровать тикеры, доступные к торговле (active + tradable)."""
         tradable: List[str] = []
@@ -54,8 +61,12 @@ class LiveStrategy:
         for ticker in tickers:
             try:
                 asset = self.trading_client.get_asset(ticker)
-                status = str(getattr(asset, 'status', '')).lower()
-                if getattr(asset, 'tradable', False) and status == 'active':
+                raw_status = getattr(asset, 'status', 'active')
+                status = raw_status.lower() if isinstance(raw_status, str) else 'active'
+                raw_tradable = getattr(asset, 'tradable', True)
+                tradable_flag = bool(raw_tradable)
+
+                if tradable_flag and status == 'active':
                     tradable.append(ticker)
                 else:
                     skipped.append((ticker, status or 'not_tradable'))
@@ -418,7 +429,17 @@ class LiveStrategy:
                     type=OrderType.MARKET,
                     time_in_force=TimeInForce.DAY
                 )
-                order_response = self.trading_client.submit_order(order)
+                try:
+                    order_response = self.trading_client.submit_order(order)
+                except APIError as exc:
+                    if self._is_pdt_error(exc):
+                        logging.warning(
+                            "Order for %s blocked by PDT protection; skipping ticker",
+                            ticker
+                        )
+                        failed_opens.append((ticker, "PDT protection"))
+                        continue
+                    raise
                 logging.info(
                     "Opened %s in %s account for $%.2f",
                     ticker, account_name, cash_per_position
