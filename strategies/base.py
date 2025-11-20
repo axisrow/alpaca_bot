@@ -1,7 +1,7 @@
 """Base momentum strategy class."""
 import logging
 import time
-from typing import List, cast
+from typing import List, Tuple, cast
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
@@ -43,6 +43,35 @@ class BaseMomentumStrategy:
         self.trading_client = trading_client
         self.tickers = tickers
         self.top_count = top_count
+
+    def _filter_tradable_tickers(self, tickers: List[str]) -> List[str]:
+        """Отфильтровать тикеры, доступные к торговле (active + tradable)."""
+        tradable: List[str] = []
+        skipped: List[Tuple[str, str]] = []
+
+        for ticker in tickers:
+            try:
+                asset = self.trading_client.get_asset(ticker)
+                status = str(getattr(asset, 'status', '')).lower()
+                if getattr(asset, 'tradable', False) and status == 'active':
+                    tradable.append(ticker)
+                else:
+                    skipped.append((ticker, status or 'not_tradable'))
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.warning(
+                    "Skip %s: failed to fetch asset status (%s)",
+                    ticker, exc
+                )
+                skipped.append((ticker, 'lookup_failed'))
+
+        if skipped:
+            logging.warning(
+                "Skipping %d non-tradable assets: %s",
+                len(skipped),
+                [(t, s) for t, s in skipped]
+            )
+
+        return tradable
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
@@ -150,6 +179,11 @@ class BaseMomentumStrategy:
             logging.info("Top %d stocks by momentum: %s", self.top_count, ', '.join(top_tickers))
             if not top_tickers:
                 logging.warning("No tickers returned for strategy, skipping rebalance")
+                return
+
+            top_tickers = self._filter_tradable_tickers(top_tickers)
+            if not top_tickers:
+                logging.warning("No tradable tickers after filtering, stopping rebalance")
                 return
 
             # Get current positions

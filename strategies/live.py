@@ -1,7 +1,7 @@
 """Momentum strategy for live account with investor management."""
 import logging
 import time
-from typing import List, cast, TYPE_CHECKING, Optional
+from typing import List, Tuple, cast, TYPE_CHECKING, Optional
 
 import pandas as pd
 from alpaca.data.historical import StockHistoricalDataClient
@@ -45,6 +45,35 @@ class LiveStrategy:
         self.tickers = tickers
         self.top_count = top_count
         self.investor_manager = investor_manager
+
+    def _filter_tradable_tickers(self, tickers: List[str]) -> List[str]:
+        """Отфильтровать тикеры, доступные к торговле (active + tradable)."""
+        tradable: List[str] = []
+        skipped: List[Tuple[str, str]] = []
+
+        for ticker in tickers:
+            try:
+                asset = self.trading_client.get_asset(ticker)
+                status = str(getattr(asset, 'status', '')).lower()
+                if getattr(asset, 'tradable', False) and status == 'active':
+                    tradable.append(ticker)
+                else:
+                    skipped.append((ticker, status or 'not_tradable'))
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.warning(
+                    "Skip %s: failed to fetch asset status (%s)",
+                    ticker, exc
+                )
+                skipped.append((ticker, 'lookup_failed'))
+
+        if skipped:
+            logging.warning(
+                "Skipping %d non-tradable assets: %s",
+                len(skipped),
+                [(t, s) for t, s in skipped]
+            )
+
+        return tradable
 
     @retry_on_exception()
     def get_signals(self) -> List[str]:
@@ -187,6 +216,10 @@ class LiveStrategy:
 
                 # Рассчитать top N по momentum
                 top_tickers = self._calculate_signals(account_tickers)
+                top_tickers = self._filter_tradable_tickers(top_tickers)
+                if not top_tickers:
+                    logging.warning("No tradable tickers for %s after filtering, skipping", account_name)
+                    continue
                 logging.info(
                     "Top %d stocks for %s: %s",
                     self.top_count, account_name, ', '.join(top_tickers[:5])
@@ -370,6 +403,11 @@ class LiveStrategy:
                                tickers: List[str],
                                cash_per_position: float) -> None:
         """Открыть новые позиции на счете."""
+        tickers = self._filter_tradable_tickers(tickers)
+        if not tickers:
+            logging.warning("No tradable tickers to open in %s", account_name)
+            return
+
         failed_opens = []
         for ticker in tickers:
             try:

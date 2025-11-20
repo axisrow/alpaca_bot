@@ -4,8 +4,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, cast
 
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramConflictError
 from aiogram.types import BotCommand
 
 from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS
@@ -218,4 +219,14 @@ class TelegramBot:
             BotCommand(command="force_rebalance", description="⚡ Force rebalance (admin only)"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
-        await self.dp.start_polling(self.bot, allowed_updates=["message"], polling_timeout=60)
+        try:
+            await self.dp.start_polling(self.bot, allowed_updates=["message"], polling_timeout=60)
+        except TelegramConflictError as exc:
+            # Sliplane запускает несколько экземпляров; конфликт опроса считаем нормой
+            logging.warning(
+                "Telegram polling stopped due to conflict (another getUpdates running): %s",
+                exc
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.error("Telegram polling failed: %s", exc, exc_info=True)
+            raise

@@ -111,7 +111,7 @@ HIGH_TICKERS = [
     'PHVS', 'PHYS', 'PI', 'PII', 'PINS', 'PK', 'PKOH', 'PKST', 'PL', 'PLAY',
     'PLCE', 'PLOW', 'PLUG', 'PLYM', 'PMVP', 'PNFP', 'PONY', 'POR', 'POWL', 'PPC',
     'PR', 'PRAA', 'PRAX', 'PRCT', 'PRG', 'PRMB', 'PROK', 'PRSU', 'PRTA', 'PRTS',
-    'PSFE', 'PSLV', 'PSTG', 'PSTL', 'PTLO', 'PTON', 'PX', 'PYXS', 'QCLS', 'QMMM',
+    'PSFE', 'PSLV', 'PSTG', 'PSTL', 'PTLO', 'PTON', 'PX', 'PYXS', 'QCLS',
     'QS', 'QURE', 'RAMP', 'RARE', 'RBLX', 'RBOT', 'RBRK', 'RC', 'RCAT', 'RCEL',
     'RCUS', 'RDDT', 'RDNT', 'RDW', 'REAL', 'REPL', 'REXR', 'RGC', 'RGLD', 'RGNX',
     'RH', 'RHLD', 'RIG', 'RILY', 'RIOT', 'RIVN', 'RKLB', 'RKT', 'RM', 'RNA',
