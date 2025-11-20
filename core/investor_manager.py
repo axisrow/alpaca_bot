@@ -344,7 +344,7 @@ class InvestorManager:
         try:
             with open(operations_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                header = reader.fieldnames
+                header = reader.fieldnames or []
 
                 for row in reader:
                     if row['status'] == 'pending':
@@ -669,7 +669,7 @@ class InvestorManager:
                 v for k, v in allocations[account].items() if k != 'total'
             )
 
-        return allocations
+        return {account: dict(alloc) for account, alloc in allocations.items()}
 
     def calculate_investor_balance(self, name: str) -> Dict:
         """Рассчитать баланс инвестора по всем счетам.
@@ -919,7 +919,7 @@ class InvestorManager:
 
             # Получить реальный баланс
             account = trading_client.get_account()
-            real_total = float(account.equity)
+            real_total = float(getattr(account, 'equity', 0))
 
             # Проверить разницу (допуск $1)
             diff = abs(virtual_total - real_total)
@@ -951,13 +951,52 @@ class InvestorManager:
             date: Дата для snapshot
         """
         date = date or datetime.now(NY_TIMEZONE)
+        snapshot_date = date.date()
 
         for investor_name in self._active_investors():
             balance = self.calculate_investor_balance(investor_name)
             investor_path = self._get_investor_path(investor_name)
             snapshot_file = investor_path / 'balances_snapshot.csv'
+            operations_file = investor_path / 'operations.csv'
 
             file_exists = snapshot_file.exists()
+
+            cumulative_deposits = defaultdict(float)
+            cumulative_withdrawals = defaultdict(float)
+
+            if operations_file.exists():
+                try:
+                    with open(operations_file, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            if row.get('status') != 'completed':
+                                continue
+
+                            try:
+                                op_date = datetime.strptime(
+                                    row['date'], '%Y-%m-%d'
+                                ).date()
+                                if op_date > snapshot_date:
+                                    continue
+
+                                amount = float(row['amount'])
+                            except (ValueError, KeyError):
+                                continue
+
+                            account = row.get('account')
+                            if not account:
+                                continue
+
+                            if row.get('operation') == 'deposit':
+                                cumulative_deposits[account] += amount
+                            elif row.get('operation') in ('withdraw', 'fee'):
+                                cumulative_withdrawals[account] += amount
+
+                except Exception as exc:
+                    logging.error(
+                        "Error aggregating operations for %s: %s",
+                        investor_name, exc
+                    )
 
             try:
                 with open(snapshot_file, 'a', newline='', encoding='utf-8') as f:
@@ -979,8 +1018,8 @@ class InvestorManager:
                             f"{account_data.get('positions_value', 0):.2f}",
                             f"{account_data['total_value']:.2f}",
                             f"{account_data.get('pnl', 0):.2f}",
-                            '0.00',  # TODO: рассчитать из operations.csv
-                            '0.00',  # TODO: рассчитать из operations.csv
+                            f"{cumulative_deposits.get(account, 0.0):.2f}",
+                            f"{cumulative_withdrawals.get(account, 0.0):.2f}",
                             f"{self.investors[investor_name].high_watermark:.2f}"
                         ])
 

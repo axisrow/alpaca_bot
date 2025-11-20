@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, cast
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -12,6 +12,9 @@ from aiogram.types import BotCommand
 from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS
 from .rebalance_flag import NY_TIMEZONE
 from .utils import run_sync
+
+if TYPE_CHECKING:
+    from .alpaca_bot import TradingBot
 
 
 class TelegramBot:
