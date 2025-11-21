@@ -5,6 +5,8 @@ from typing import List, Tuple, cast
 
 import pandas as pd
 from alpaca.common.exceptions import APIError
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestTradeRequest
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
@@ -44,12 +46,59 @@ class BaseMomentumStrategy:
         self.trading_client = trading_client
         self.tickers = tickers
         self.top_count = top_count
+        self.data_client: StockHistoricalDataClient | None = None
 
     @staticmethod
     def _is_pdt_error(exc: Exception) -> bool:
         """Detect Alpaca PDT protection error."""
         msg = str(exc).lower()
         return "pattern day trading" in msg or "40310100" in msg
+
+    def _get_data_client(self) -> StockHistoricalDataClient:
+        """Create or return market data client bound to strategy keys."""
+        if self.data_client is None:
+            self.data_client = StockHistoricalDataClient(self.API_KEY, self.SECRET_KEY)
+        return self.data_client
+
+    def _preload_last_prices(self, tickers: List[str]) -> dict[str, float]:
+        """Return latest market prices for provided tickers (best-effort, real-time)."""
+        if not tickers:
+            return {}
+
+        prices: dict[str, float] = {}
+        try:
+            client = self._get_data_client()
+            request = StockLatestTradeRequest(symbol_or_symbols=tickers)
+            trades = client.get_stock_latest_trade(request)
+            for symbol in tickers:
+                trade = trades.get(symbol)
+                if trade:
+                    price = float(getattr(trade, 'price', 0.0) or 0.0)
+                    if price > 0:
+                        prices[symbol] = price
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.warning(
+                "Failed bulk latest price lookup for %d tickers: %s",
+                len(tickers),
+                exc
+            )
+
+        # Fallback per-ticker for any missing entries
+        for symbol in tickers:
+            if symbol in prices:
+                continue
+            try:
+                client = self._get_data_client()
+                request = StockLatestTradeRequest(symbol_or_symbols=symbol)
+                trade = client.get_stock_latest_trade(request)
+                if symbol in trade:
+                    price = float(getattr(trade[symbol], 'price', 0.0) or 0.0)
+                    if price > 0:
+                        prices[symbol] = price
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.warning("Failed price lookup for %s: %s", symbol, exc)
+
+        return prices
 
     def _filter_tradable_tickers(self, tickers: List[str]) -> List[str]:
         """Отфильтровать тикеры, доступные к торговле (active + tradable)."""
@@ -64,10 +113,15 @@ class BaseMomentumStrategy:
                 raw_tradable = getattr(asset, 'tradable', True)
                 tradable_flag = bool(raw_tradable)
 
-                if tradable_flag and status == 'active':
-                    tradable.append(ticker)
-                else:
-                    skipped.append((ticker, status or 'not_tradable'))
+                if not tradable_flag:
+                    skipped.append((ticker, 'not_tradable'))
+                    continue
+
+                if status != 'active':
+                    skipped.append((ticker, status or 'inactive'))
+                    continue
+
+                tradable.append(ticker)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logging.warning(
                     "Skip %s: failed to fetch asset status (%s)",
@@ -148,21 +202,48 @@ class BaseMomentumStrategy:
             tickers: List of tickers to open
             cash_per_position: Position size in dollars
         """
+        price_lookup = self._preload_last_prices(tickers)
         failed_opens = []
         for ticker in tickers:
             try:
-                order = MarketOrderRequest(
-                    symbol=ticker,
-                    notional=round(cash_per_position, 2),
-                    side=OrderSide.BUY,
-                    type=OrderType.MARKET,
-                    time_in_force=TimeInForce.DAY
-                )
+                asset = self.trading_client.get_asset(ticker)
+                fractionable_flag = bool(getattr(asset, 'fractionable', True))
+
+                if fractionable_flag:
+                    order = MarketOrderRequest(
+                        symbol=ticker,
+                        notional=round(cash_per_position, 2),
+                        side=OrderSide.BUY,
+                        type=OrderType.MARKET,
+                        time_in_force=TimeInForce.DAY
+                    )
+                else:
+                    price = price_lookup.get(ticker, 0.0)
+                    qty = int(cash_per_position // price) if price > 0 else 0
+                    if price <= 0 or qty <= 0:
+                        logging.warning(
+                            "Skipping %s: cannot place whole-share order (price=%.2f, cash=%.2f)",
+                            ticker,
+                            price,
+                            cash_per_position
+                        )
+                        failed_opens.append((ticker, "no_qty_for_whole_share"))
+                        continue
+
+                    order = MarketOrderRequest(
+                        symbol=ticker,
+                        qty=qty,
+                        side=OrderSide.BUY,
+                        type=OrderType.MARKET,
+                        time_in_force=TimeInForce.DAY
+                    )
                 self.trading_client.submit_order(order)
                 logging.info(
-                    "Opened position %s for $%.2f",
+                    "Opened position %s using %s (cash target $%.2f, price %.2f)",
                     ticker,
-                    cash_per_position
+                    "notional" if fractionable_flag else f"qty={order.qty}",  # type: ignore[attr-defined]
+                    cash_per_position,
+                    price_lookup.get(ticker, 0.0)
                 )
             except APIError as exc:
                 if self._is_pdt_error(exc):
@@ -211,6 +292,14 @@ class BaseMomentumStrategy:
             if not top_tickers:
                 logging.warning("No tradable tickers after filtering, stopping rebalance")
                 return
+            price_lookup = self._preload_last_prices(top_tickers)
+            asset_cache = {}
+            for ticker in top_tickers:
+                try:
+                    asset_cache[ticker] = self.trading_client.get_asset(ticker)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logging.warning("Failed to fetch asset profile for %s: %s", ticker, exc)
+                    asset_cache[ticker] = None
 
             # Get current positions
             positions_raw = self.trading_client.get_all_positions()
@@ -261,29 +350,59 @@ class BaseMomentumStrategy:
             tolerance = 1.0  # Skip tiny adjustments
             failed_adjustments = []
             for ticker in top_tickers:
+                asset = asset_cache.get(ticker)
+                fractionable_flag = bool(getattr(asset, 'fractionable', True)) if asset else True
+                price = price_lookup.get(ticker, 0.0)
                 position = refreshed_positions.get(ticker)
                 current_value = float(getattr(position, 'market_value', 0)) if position else 0.0
+                current_shares = float(getattr(position, 'qty', 0) or 0) if position else 0.0
                 difference = target_value - current_value
 
                 if abs(difference) <= tolerance:
                     continue
 
                 side = OrderSide.BUY if difference > 0 else OrderSide.SELL
-                order = MarketOrderRequest(
-                    symbol=ticker,
-                    notional=round(abs(difference), 2),
-                    side=side,
-                    type=OrderType.MARKET,
-                    time_in_force=TimeInForce.DAY
-                )
+                order: MarketOrderRequest | None
+
+                if fractionable_flag:
+                    order = MarketOrderRequest(
+                        symbol=ticker,
+                        notional=round(abs(difference), 2),
+                        side=side,
+                        type=OrderType.MARKET,
+                        time_in_force=TimeInForce.DAY
+                    )
+                else:
+                    if price <= 0:
+                        logging.warning(
+                            "Skip %s: missing price for whole-share adjustment",
+                            ticker
+                        )
+                        failed_adjustments.append((ticker, "no_price_for_whole_share"))
+                        continue
+
+                    target_shares = int(target_value // price)
+                    delta_shares = target_shares - current_shares
+                    if abs(delta_shares) < 1:
+                        continue
+
+                    side = OrderSide.BUY if delta_shares > 0 else OrderSide.SELL
+                    order = MarketOrderRequest(
+                        symbol=ticker,
+                        qty=int(abs(delta_shares)),
+                        side=side,
+                        type=OrderType.MARKET,
+                        time_in_force=TimeInForce.DAY
+                    )
                 try:
                     self.trading_client.submit_order(order)
                     logging.info(
-                        "Adjusted %s by %s for $%.2f (target $%.2f)",
+                        "Adjusted %s by %s using %s (target $%.2f, price %.2f)",
                         ticker,
                         side.name,
-                        abs(difference),
-                        target_value
+                        "notional" if fractionable_flag else f"qty={order.qty}",  # type: ignore[attr-defined]
+                        target_value,
+                        price
                     )
                 except APIError as exc:
                     if self._is_pdt_error(exc):
