@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.exceptions import TelegramConflictError
+from aiogram.exceptions import TelegramConflictError, TelegramNetworkError
 from aiogram.types import BotCommand
 
 from config import TELEGRAM_BOT_TOKEN, ADMIN_IDS
 from .rebalance_flag import NY_TIMEZONE
-from .utils import run_sync
+from .utils import run_sync, retry_on_telegram_error
 
 if TYPE_CHECKING:
     from .alpaca_bot import TradingBot
@@ -52,6 +52,21 @@ class TelegramBot:
         """Setup command handlers."""
         self.dp.include_router(self.router)
 
+    @retry_on_telegram_error(retries=4, initial_delay=2.0)
+    async def _send_message_to_admin(self, admin_id: int, message: str) -> None:
+        """Send message to a single admin with retry logic.
+
+        Args:
+            admin_id: Telegram user ID
+            message: Message text to send
+        """
+        await self.bot.send_message(
+            chat_id=admin_id,
+            text=message,
+            parse_mode="HTML",
+            request_timeout=30
+        )
+
     async def _send_to_admins(self, message: str) -> None:
         """Send message to all admin IDs.
 
@@ -60,13 +75,14 @@ class TelegramBot:
         """
         for admin_id in ADMIN_IDS:
             try:
-                await self.bot.send_message(
-                    chat_id=admin_id,
-                    text=message,
-                    parse_mode="HTML",
-                    request_timeout=30
-                )
+                await self._send_message_to_admin(admin_id, message)
                 logging.info("Message sent to admin %s", admin_id)
+            except TelegramNetworkError as exc:
+                logging.error(
+                    "Failed to send message to admin %s after retries: %s",
+                    admin_id,
+                    exc
+                )
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logging.error(
                     "Error sending message to admin %s: %s",
@@ -208,7 +224,7 @@ class TelegramBot:
             raise
 
     async def start(self) -> None:
-        """Start Telegram bot."""
+        """Start Telegram bot with network error resilience."""
         logging.info("=== Starting Telegram bot ===")
         await self.bot.set_my_commands([
             BotCommand(command="start", description="Start"),
@@ -222,14 +238,43 @@ class TelegramBot:
             BotCommand(command="force_rebalance", description="⚡ Force rebalance (admin only)"),
             BotCommand(command="clear", description="🗑 Clear cache (admin only)"),
         ])
-        try:
-            await self.dp.start_polling(self.bot, allowed_updates=["message"], polling_timeout=60)
-        except TelegramConflictError as exc:
-            # Sliplane запускает несколько экземпляров; конфликт опроса считаем нормой
-            logging.warning(
-                "Telegram polling stopped due to conflict (another getUpdates running): %s",
-                exc
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logging.error("Telegram polling failed: %s", exc, exc_info=True)
-            raise
+
+        # Retry polling with exponential backoff on network errors
+        retries = 4
+        delay = 2.0
+        for attempt in range(1, retries + 1):
+            try:
+                await self.dp.start_polling(
+                    self.bot,
+                    allowed_updates=["message"],
+                    polling_timeout=60
+                )
+                break  # Polling ended normally (e.g., manual stop)
+            except TelegramConflictError as exc:
+                # Sliplane запускает несколько экземпляров; конфликт опроса считаем нормой
+                logging.warning(
+                    "Telegram polling stopped due to conflict (another getUpdates running): %s",
+                    exc
+                )
+                break  # Don't retry on conflict
+            except TelegramNetworkError as exc:
+                if attempt == retries:
+                    logging.error(
+                        "Failed to start polling after %d attempts: %s",
+                        retries,
+                        exc,
+                        exc_info=True
+                    )
+                    raise
+                logging.warning(
+                    "Network error during polling (attempt %d/%d): %s - retrying in %.1fs",
+                    attempt,
+                    retries,
+                    exc,
+                    delay
+                )
+                await asyncio.sleep(delay)
+                delay *= 2  # Exponential backoff
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logging.error("Telegram polling failed: %s", exc, exc_info=True)
+                raise
