@@ -5,6 +5,8 @@ import time
 from functools import wraps
 from typing import Callable, TypeVar, Any, Dict, Coroutine
 
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
+
 T = TypeVar('T')
 
 
@@ -45,6 +47,73 @@ def retry_on_exception(
                         exc
                     )
                     time.sleep(delay)
+            raise RuntimeError("Unexpected: retry loop completed without returning or raising")
+        return wrapper
+    return decorator
+
+
+def retry_on_telegram_error(
+    retries: int = 4,
+    initial_delay: float = 2.0
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Decorator for retrying async Telegram operations with exponential backoff.
+
+    Specifically handles TelegramNetworkError (including ServerDisconnectedError)
+    and TelegramRetryAfter exceptions with exponential backoff.
+
+    Args:
+        retries: Number of retry attempts (default: 4)
+        initial_delay: Initial delay in seconds, doubles each retry (default: 2.0)
+
+    Returns:
+        Decorated async function with retry mechanism
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            delay = initial_delay
+            for attempt in range(1, retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except TelegramRetryAfter as exc:
+                    # Respect Telegram's rate limit
+                    retry_after = exc.retry_after
+                    logging.warning(
+                        "Rate limited in %s, waiting %d seconds (attempt %d/%d)",
+                        func.__name__,
+                        retry_after,
+                        attempt,
+                        retries
+                    )
+                    if attempt == retries:
+                        logging.error(
+                            "All %d attempts failed for %s due to rate limiting",
+                            retries,
+                            func.__name__
+                        )
+                        raise
+                    await asyncio.sleep(retry_after)
+                except TelegramNetworkError as exc:
+                    # Handle network errors with exponential backoff
+                    if attempt == retries:
+                        logging.error(
+                            "All %d attempts failed for %s (final network error): %s",
+                            retries,
+                            func.__name__,
+                            exc,
+                            exc_info=True
+                        )
+                        raise
+                    logging.warning(
+                        "Network error in %s (attempt %d/%d): %s - retrying in %.1fs",
+                        func.__name__,
+                        attempt,
+                        retries,
+                        exc,
+                        delay
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= 2  # Exponential backoff
             raise RuntimeError("Unexpected: retry loop completed without returning or raising")
         return wrapper
     return decorator

@@ -4,8 +4,10 @@ import logging
 from typing import Any
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError
 
 from config import ADMIN_IDS
+from .utils import retry_on_telegram_error
 
 
 class TelegramLoggingHandler(logging.Handler):
@@ -47,6 +49,21 @@ class TelegramLoggingHandler(logging.Handler):
             # Silently ignore errors to prevent infinite loops
             pass
 
+    @retry_on_telegram_error(retries=4, initial_delay=2.0)
+    async def _send_message_to_admin(self, admin_id: int, message: str) -> None:
+        """Send message to a single admin with retry logic.
+
+        Args:
+            admin_id: Telegram user ID
+            message: Message text to send
+        """
+        await self.bot.send_message(
+            chat_id=admin_id,
+            text=message,
+            parse_mode="HTML",
+            request_timeout=30
+        )
+
     async def _send_to_admins(self, message: str) -> None:
         """Send message to all admin IDs.
 
@@ -55,14 +72,10 @@ class TelegramLoggingHandler(logging.Handler):
         """
         for admin_id in ADMIN_IDS:
             try:
-                await self.bot.send_message(
-                    chat_id=admin_id,
-                    text=message,
-                    parse_mode="HTML",
-                    request_timeout=30
-                )
-            except Exception:  # pylint: disable=broad-exception-caught
+                await self._send_message_to_admin(admin_id, message)
+            except (TelegramNetworkError, Exception):  # pylint: disable=broad-exception-caught
                 # Silently ignore - don't log to prevent infinite loops
+                # Network errors will already be logged by the retry decorator
                 pass
 
     @staticmethod
